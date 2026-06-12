@@ -326,6 +326,35 @@ function fillDemoVehicle() {
   });
 }
 
+function detectVehicleByVin() {
+  const vin = vehicleForm.vin.trim().toUpperCase();
+
+  if (!vin) {
+    alert("Введите VIN");
+    return;
+  }
+
+  // Временная заглушка поставщика данных.
+  // Позже здесь будет реальный запрос к VIN API.
+  if (vin === "JF1SK7AC2MG117103") {
+    setVehicleForm((prev) => ({
+      ...prev,
+      vin,
+      brand: "Subaru",
+      model: "Forester",
+      generation: "SK",
+      year: "2020",
+      engine: "FB20",
+      transmission: "CVT",
+      drive: "AWD",
+    }));
+
+    return;
+  }
+
+  alert("Пока этот VIN не найден в демо-базе. Позже подключим реального поставщика.");
+}
+
 if (!vehicle) {
   return (
     <div className="app">
@@ -340,6 +369,9 @@ if (!vehicle) {
             onChange={(e) => updateVehicleField("vin", e.target.value)}
             placeholder="VIN"
           />
+          <button className="full secondary" onClick={detectVehicleByVin}>
+  🔍 Определить автомобиль по VIN
+</button>
 
           <input
             value={vehicleForm.brand}
