@@ -1,0 +1,310 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: #0f1115;
+  color: #f4f4f5;
+  font-family: Arial, sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.app {
+  min-height: 100vh;
+  padding: 24px 16px 40px;
+  background:
+    radial-gradient(circle at top, #1f2937 0, transparent 34%),
+    #0f1115;
+}
+
+.card {
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+h1 {
+  text-align: center;
+  font-size: 42px;
+  margin-bottom: 22px;
+}
+
+.vehicle {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.vehicle h2 {
+  font-size: 26px;
+  margin-bottom: 8px;
+}
+
+.vehicle p {
+  color: #9ca3af;
+  font-size: 18px;
+}
+
+.status {
+  padding: 18px;
+  border-radius: 18px;
+  margin-bottom: 18px;
+  text-align: center;
+  font-size: 21px;
+  font-weight: 700;
+}
+
+.good {
+  background: #12351f;
+  color: #d1fae5;
+}
+
+.warning {
+  background: #3b2f12;
+  color: #fde68a;
+}
+
+.section {
+  background: #1a1d24;
+  border: 1px solid #252a34;
+  border-radius: 18px;
+  padding: 18px;
+  margin-bottom: 16px;
+}
+
+.section h3 {
+  text-align: center;
+  font-size: 23px;
+  margin-bottom: 14px;
+}
+
+.big-number {
+  text-align: center;
+  font-size: 42px;
+  line-height: 1;
+  font-weight: 800;
+  margin-bottom: 18px;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+}
+
+input,
+select {
+  width: 100%;
+  background: #0f1115;
+  color: #f4f4f5;
+  border: 1px solid #343a46;
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 10px;
+  outline: none;
+}
+
+input:focus,
+select:focus {
+  border-color: #60a5fa;
+}
+
+button {
+  border: 0;
+  background: #2563eb;
+  color: white;
+  border-radius: 14px;
+  padding: 14px 16px;
+  font-weight: 700;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+.full {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.task {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid #303642;
+}
+
+.task:first-of-type {
+  border-top: 0;
+}
+
+.task strong {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.task span {
+  display: block;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+.red {
+  color: #f87171;
+}
+
+.yellow {
+  color: #facc15;
+}
+
+.muted {
+  text-align: center;
+  color: #9ca3af;
+}
+
+.log {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 0;
+  border-top: 1px solid #303642;
+}
+
+.log:first-of-type {
+  border-top: 0;
+}
+
+.log span {
+  text-align: right;
+}
+
+.danger {
+  width: 100%;
+  background: #3f1d1d;
+  color: #fecaca;
+  margin-top: 4px;
+}
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+
+  display: flex;
+  justify-content: space-around;
+
+  background: #161a22;
+  border-top: 1px solid #2f3542;
+
+  padding: 12px;
+}
+
+.bottom-nav button {
+  background: transparent;
+  border: 0;
+  font-size: 24px;
+}
+
+.nav-active {
+  transform: scale(1.25);
+}
+.ai-card {
+  background: #111827;
+  border: 1px solid #2f3542;
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 10px;
+  line-height: 1.45;
+}
+
+.risk {
+  background: #111827;
+  border: 1px solid #2f3542;
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 10px;
+}
+
+.risk strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.risk span {
+  display: block;
+  color: #facc15;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.risk p {
+  color: #d1d5db;
+  line-height: 1.45;
+}
+textarea {
+  width: 100%;
+  min-height: 90px;
+  background: #0f1115;
+  color: #f4f4f5;
+  border: 1px solid #343a46;
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 10px;
+  outline: none;
+  resize: vertical;
+}
+
+textarea:focus {
+  border-color: #60a5fa;
+}
+
+.chat {
+  margin-top: 14px;
+}
+
+.message {
+  padding: 12px 14px;
+  border-radius: 14px;
+  margin-bottom: 10px;
+  line-height: 1.45;
+}
+
+.message.user {
+  background: #1d4ed8;
+  margin-left: 24px;
+}
+
+.message.ai {
+  background: #111827;
+  border: 1px solid #2f3542;
+  margin-right: 24px;
+}
+
+.secondary {
+  background: #374151;
+  margin-top: 10px;
+}
+.upload-button {
+  display: block;
+  width: 100%;
+  background: #2563eb;
+  color: white;
+  border-radius: 14px;
+  padding: 14px 16px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.mini-title {
+  color: #9ca3af;
+  text-align: center;
+  margin: 18px 0 10px;
+  font-size: 14px;
+}
