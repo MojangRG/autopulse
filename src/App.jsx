@@ -96,6 +96,16 @@ function App() {
     return saved ? JSON.parse(saved) : defaultData;
   });
 
+  const [profile, setProfile] = useState(() => {
+    const saved = localStorage.getItem("autopulse-profile");
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const [analysis, setAnalysis] = useState(() => {
+    const saved = localStorage.getItem("autopulse-analysis");
+    return saved ? JSON.parse(saved) : null;
+  });
+
   const [newMileage, setNewMileage] = useState(data.mileage);
   const [workTitle, setWorkTitle] = useState("ТО двигателя");
   const [workMileage, setWorkMileage] = useState(data.mileage);
@@ -103,10 +113,7 @@ function App() {
   const [question, setQuestion] = useState("");
   const [chat, setChat] = useState([]);
   const [isDetecting, setIsDetecting] = useState(false);
-  const [profile, setProfile] = useState(() => {
-  const saved = localStorage.getItem("autopulse-profile");
-  return saved ? JSON.parse(saved) : null;
-});
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("autopulse-data", JSON.stringify(data));
@@ -164,16 +171,8 @@ function App() {
       messages.push(`По пробегу активны типовые риски модели: ${activeRisks.length}.`);
     }
 
-    if (data.mileage >= 95000 && data.mileage <= 105000) {
-      messages.push("Пробег подходит к рубежу 100 000 км. Стоит планировать свечи, подвеску и расширенную диагностику.");
-    }
-
-    if (data.mileage >= 105000) {
-      messages.push("После 105 000 км особое внимание к CVT, редукторам и подвеске.");
-    }
-
     return messages;
-  }, [overdue, soon, activeRisks, data.mileage]);
+  }, [overdue, soon, activeRisks]);
 
   function updateVehicleField(field, value) {
     setVehicleForm((prev) => ({ ...prev, [field]: value }));
@@ -209,9 +208,10 @@ function App() {
       }
 
       setVehicle(result.vehicle);
+      setProfile(result.profile);
 
       localStorage.setItem("autopulse-profile", JSON.stringify(result.profile));
-setProfile(result.profile);
+
       setData((prev) => ({
         ...prev,
         mileage: Number(vehicleForm.mileage || 0),
@@ -225,6 +225,37 @@ setProfile(result.profile);
       console.error(error);
     } finally {
       setIsDetecting(false);
+    }
+  }
+
+  async function analyzeVehicle() {
+    try {
+      setIsAnalyzing(true);
+
+      const response = await fetch("/api/analyze-vehicle", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          vehicle,
+          profile,
+          data,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.details || result.error || "Analysis failed");
+      }
+
+      setAnalysis(result.analysis);
+      localStorage.setItem("autopulse-analysis", JSON.stringify(result.analysis));
+    } catch (error) {
+      alert("Ошибка анализа: " + error.message);
+    } finally {
+      setIsAnalyzing(false);
     }
   }
 
@@ -287,6 +318,8 @@ setProfile(result.profile);
     }));
 
     setWorkCost("");
+    setAnalysis(null);
+    localStorage.removeItem("autopulse-analysis");
     setTab("journal");
   }
 
@@ -295,6 +328,7 @@ setProfile(result.profile);
       localStorage.removeItem("autopulse-data");
       localStorage.removeItem("autopulse-vehicle");
       localStorage.removeItem("autopulse-profile");
+      localStorage.removeItem("autopulse-analysis");
 
       setVehicle(null);
       setData(defaultData);
@@ -302,6 +336,7 @@ setProfile(result.profile);
       setWorkMileage(defaultData.mileage);
       setChat([]);
       setProfile(null);
+      setAnalysis(null);
 
       setVehicleForm({
         vin: "",
@@ -320,56 +355,57 @@ setProfile(result.profile);
   }
 
   async function askAi() {
-  if (!question.trim()) return;
+    if (!question.trim()) return;
 
-  const userQuestion = question;
-  setQuestion("");
+    const userQuestion = question;
+    setQuestion("");
 
-  setChat((prev) => [
-    ...prev,
-    { role: "user", text: userQuestion },
-    { role: "ai", text: "Думаю..." },
-  ]);
+    setChat((prev) => [
+      ...prev,
+      { role: "user", text: userQuestion },
+      { role: "ai", text: "Думаю..." },
+    ]);
 
-  try {
-    const response = await fetch("/api/ai-mechanic", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        vehicle,
-        profile,
-        data,
-        question: userQuestion,
-      }),
-    });
+    try {
+      const response = await fetch("/api/ai-mechanic", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          vehicle,
+          profile,
+          data,
+          analysis,
+          question: userQuestion,
+        }),
+      });
 
-    const result = await response.json();
+      const result = await response.json();
 
-    if (!response.ok) {
-      throw new Error(result.details || result.error || "AI mechanic failed");
+      if (!response.ok) {
+        throw new Error(result.details || result.error || "AI mechanic failed");
+      }
+
+      setChat((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          role: "ai",
+          text: result.answer,
+        };
+        return updated;
+      });
+    } catch (error) {
+      setChat((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          role: "ai",
+          text: "Ошибка AI-механика: " + error.message,
+        };
+        return updated;
+      });
     }
-
-    setChat((prev) => {
-      const updated = [...prev];
-      updated[updated.length - 1] = {
-        role: "ai",
-        text: result.answer,
-      };
-      return updated;
-    });
-  } catch (error) {
-    setChat((prev) => {
-      const updated = [...prev];
-      updated[updated.length - 1] = {
-        role: "ai",
-        text: "Ошибка AI-механика: " + error.message,
-      };
-      return updated;
-    });
   }
-}
 
   if (!vehicle) {
     return (
@@ -451,10 +487,6 @@ setProfile(result.profile);
             <button className="full secondary" onClick={fillDemoVehicle}>
               Заполнить демо Subaru
             </button>
-
-            <p className="muted">
-              VIN-кнопка уже идёт через backend: поставщик данных → GPT → сервисный профиль.
-            </p>
           </div>
         </div>
       </div>
@@ -498,6 +530,33 @@ setProfile(result.profile);
                 />
                 <button onClick={saveMileage}>Обновить</button>
               </div>
+            </div>
+
+            <div className="section">
+              <h3>🎯 Что важно сейчас</h3>
+
+              <button className="full secondary" onClick={analyzeVehicle} disabled={isAnalyzing}>
+                {isAnalyzing ? "Анализирую..." : "Обновить AI-анализ"}
+              </button>
+
+              {!analysis ? (
+                <p className="muted">Нажмите кнопку, чтобы получить 3 главных приоритета.</p>
+              ) : (
+                analysis.topPriorities.map((item, index) => (
+                  <div className="risk" key={index}>
+                    <strong>
+                      {index + 1}. {item.title}
+                    </strong>
+                    <span>
+                      {item.severity} • {item.category}
+                    </span>
+                    <p>{item.reason}</p>
+                    <p>
+                      <b>Что сделать:</b> {item.action}
+                    </p>
+                  </div>
+                ))
+              )}
             </div>
 
             <div className="section">
@@ -571,104 +630,94 @@ setProfile(result.profile);
         )}
 
         {tab === "ai" && (
-  <>
-    <div className="section">
-      <h3>AI Профиль автомобиля</h3>
+          <>
+            <div className="section">
+              <h3>AI Профиль автомобиля</h3>
 
-      {!profile ? (
-        <p className="muted">
-          Профиль ещё не создан. Сбрось данные и добавь автомобиль через VIN.
-        </p>
-      ) : (
-        <>
-          <p className="muted">
-            GPT собрал сервисную карту для этой машины.
-          </p>
-
-          {profile.recommendations?.map((item, index) => (
-            <div className="ai-card" key={index}>
-              {item}
+              {!profile ? (
+                <p className="muted">
+                  Профиль ещё не создан. Сбрось данные и добавь автомобиль через VIN.
+                </p>
+              ) : (
+                <p className="muted">
+                  Профиль создан. Главные выводы смотри на главной во вкладке «Что важно сейчас».
+                </p>
+              )}
             </div>
-          ))}
-        </>
-      )}
-    </div>
 
-    {profile?.serviceItems?.length > 0 && (
-      <div className="section">
-        <h3>Регламент обслуживания</h3>
+            <div className="section">
+              <h3>Задать вопрос</h3>
 
-        {profile.serviceItems.map((item) => (
-          <div className="task" key={item.id}>
-            <div>
-              <strong>{item.name}</strong>
-              <span>
-                {item.intervalKm
-                  ? `Каждые ${Number(item.intervalKm).toLocaleString("ru-RU")} км`
-                  : "По состоянию"}
-                {item.intervalMonths
-                  ? ` • ${item.intervalMonths} мес.`
-                  : ""}
-              </span>
-              <span>{item.notes}</span>
+              <textarea
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                placeholder="Например: когда менять масло CVT?"
+              />
+
+              <button className="full" onClick={askAi}>
+                Спросить
+              </button>
+
+              <div className="chat">
+                {chat.map((msg, index) => (
+                  <div className={`message ${msg.role}`} key={index}>
+                    {msg.text}
+                  </div>
+                ))}
+              </div>
             </div>
-            <b className={item.severity === "high" ? "red" : "yellow"}>
-              {item.confidence}
-            </b>
-          </div>
-        ))}
-      </div>
-    )}
 
-    {profile?.commonIssues?.length > 0 && (
-      <div className="section">
-        <h3>Типовые риски</h3>
+            {profile?.serviceItems?.length > 0 && (
+              <div className="section">
+                <h3>Регламент обслуживания</h3>
 
-        {profile.commonIssues.map((issue) => (
-          <div className="risk" key={issue.id}>
-            <strong>{issue.name}</strong>
-            <span>
-              Риск: {issue.risk}
-              {issue.riskMileageFrom && issue.riskMileageTo
-                ? ` • ${Number(issue.riskMileageFrom).toLocaleString(
-                    "ru-RU"
-                  )}–${Number(issue.riskMileageTo).toLocaleString("ru-RU")} км`
-                : ""}
-            </span>
-
-            {issue.symptoms?.length > 0 && (
-              <p>Симптомы: {issue.symptoms.join(", ")}</p>
+                {profile.serviceItems.map((item) => (
+                  <div className="task" key={item.id}>
+                    <div>
+                      <strong>{item.name}</strong>
+                      <span>
+                        {item.intervalKm
+                          ? `Каждые ${Number(item.intervalKm).toLocaleString("ru-RU")} км`
+                          : "По состоянию"}
+                        {item.intervalMonths ? ` • ${item.intervalMonths} мес.` : ""}
+                      </span>
+                      <span>{item.notes}</span>
+                    </div>
+                    <b className={item.severity === "high" ? "red" : "yellow"}>
+                      {item.confidence}
+                    </b>
+                  </div>
+                ))}
+              </div>
             )}
 
-            <p>{issue.recommendation}</p>
-          </div>
-        ))}
-      </div>
-    )}
+            {profile?.commonIssues?.length > 0 && (
+              <div className="section">
+                <h3>Типовые риски</h3>
 
-    <div className="section">
-      <h3>Задать вопрос</h3>
+                {profile.commonIssues.map((issue) => (
+                  <div className="risk" key={issue.id}>
+                    <strong>{issue.name}</strong>
+                    <span>
+                      Риск: {issue.risk}
+                      {issue.riskMileageFrom && issue.riskMileageTo
+                        ? ` • ${Number(issue.riskMileageFrom).toLocaleString(
+                            "ru-RU"
+                          )}–${Number(issue.riskMileageTo).toLocaleString("ru-RU")} км`
+                        : ""}
+                    </span>
 
-      <textarea
-        value={question}
-        onChange={(e) => setQuestion(e.target.value)}
-        placeholder="Например: когда менять масло CVT?"
-      />
+                    {issue.symptoms?.length > 0 && (
+                      <p>Симптомы: {issue.symptoms.join(", ")}</p>
+                    )}
 
-      <button className="full" onClick={askAi}>
-        Спросить
-      </button>
-
-      <div className="chat">
-        {chat.map((msg, index) => (
-          <div className={`message ${msg.role}`} key={index}>
-            {msg.text}
-          </div>
-        ))}
-      </div>
-    </div>
-  </>
-)}
+                    <p>{issue.recommendation}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
 
         {tab === "settings" && (
           <div className="section">
