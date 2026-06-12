@@ -103,6 +103,10 @@ function App() {
   const [question, setQuestion] = useState("");
   const [chat, setChat] = useState([]);
   const [isDetecting, setIsDetecting] = useState(false);
+  const [profile, setProfile] = useState(() => {
+  const saved = localStorage.getItem("autopulse-profile");
+  return saved ? JSON.parse(saved) : null;
+});
 
   useEffect(() => {
     localStorage.setItem("autopulse-data", JSON.stringify(data));
@@ -207,7 +211,7 @@ function App() {
       setVehicle(result.vehicle);
 
       localStorage.setItem("autopulse-profile", JSON.stringify(result.profile));
-
+setProfile(result.profile);
       setData((prev) => ({
         ...prev,
         mileage: Number(vehicleForm.mileage || 0),
@@ -297,6 +301,7 @@ function App() {
       setNewMileage(defaultData.mileage);
       setWorkMileage(defaultData.mileage);
       setChat([]);
+      setProfile(null);
 
       setVehicleForm({
         vin: "",
@@ -564,79 +569,104 @@ function App() {
         )}
 
         {tab === "ai" && (
-          <>
-            <div className="section">
-              <h3>AI Механик</h3>
+  <>
+    <div className="section">
+      <h3>AI Профиль автомобиля</h3>
 
-              {aiSummary.map((message, index) => (
-                <div className="ai-card" key={index}>
-                  {message}
-                </div>
-              ))}
+      {!profile ? (
+        <p className="muted">
+          Профиль ещё не создан. Сбрось данные и добавь автомобиль через VIN.
+        </p>
+      ) : (
+        <>
+          <p className="muted">
+            GPT собрал сервисную карту для этой машины.
+          </p>
+
+          {profile.recommendations?.map((item, index) => (
+            <div className="ai-card" key={index}>
+              {item}
             </div>
+          ))}
+        </>
+      )}
+    </div>
 
-            <div className="section">
-              <h3>Задать вопрос</h3>
+    {profile?.serviceItems?.length > 0 && (
+      <div className="section">
+        <h3>Регламент обслуживания</h3>
 
-              <textarea
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                placeholder="Например: когда менять масло CVT?"
-              />
-
-              <button className="full" onClick={askAi}>
-                Спросить
-              </button>
-
-              <div className="chat">
-                {chat.map((msg, index) => (
-                  <div className={`message ${msg.role}`} key={index}>
-                    {msg.text}
-                  </div>
-                ))}
-              </div>
+        {profile.serviceItems.map((item) => (
+          <div className="task" key={item.id}>
+            <div>
+              <strong>{item.name}</strong>
+              <span>
+                {item.intervalKm
+                  ? `Каждые ${Number(item.intervalKm).toLocaleString("ru-RU")} км`
+                  : "По состоянию"}
+                {item.intervalMonths
+                  ? ` • ${item.intervalMonths} мес.`
+                  : ""}
+              </span>
+              <span>{item.notes}</span>
             </div>
+            <b className={item.severity === "high" ? "red" : "yellow"}>
+              {item.confidence}
+            </b>
+          </div>
+        ))}
+      </div>
+    )}
 
-            <div className="section">
-              <h3>Ближайшие работы</h3>
+    {profile?.commonIssues?.length > 0 && (
+      <div className="section">
+        <h3>Типовые риски</h3>
 
-              {urgent.length === 0 ? (
-                <p className="muted">По регламенту срочных работ нет.</p>
-              ) : (
-                urgent.map((item) => (
-                  <div className="task" key={item.title}>
-                    <div>
-                      <strong>{item.title}</strong>
-                      <span>Осталось: {item.left.toLocaleString("ru-RU")} км</span>
-                    </div>
-                    <b className={item.status === "Просрочено" ? "red" : "yellow"}>
-                      {item.status}
-                    </b>
-                  </div>
-                ))
-              )}
-            </div>
+        {profile.commonIssues.map((issue) => (
+          <div className="risk" key={issue.id}>
+            <strong>{issue.name}</strong>
+            <span>
+              Риск: {issue.risk}
+              {issue.riskMileageFrom && issue.riskMileageTo
+                ? ` • ${Number(issue.riskMileageFrom).toLocaleString(
+                    "ru-RU"
+                  )}–${Number(issue.riskMileageTo).toLocaleString("ru-RU")} км`
+                : ""}
+            </span>
 
-            <div className="section">
-              <h3>Типовые риски по пробегу</h3>
+            {issue.symptoms?.length > 0 && (
+              <p>Симптомы: {issue.symptoms.join(", ")}</p>
+            )}
 
-              {activeRisks.length === 0 ? (
-                <p className="muted">Сейчас активных модельных рисков нет.</p>
-              ) : (
-                activeRisks.map((issue) => (
-                  <div className="risk" key={issue.title}>
-                    <strong>{issue.title}</strong>
-                    <span>
-                      Риск: {issue.risk} • Диапазон:{" "}
-                      {issue.from.toLocaleString("ru-RU")}–{issue.to.toLocaleString("ru-RU")} км
-                    </span>
-                    <p>{issue.note}</p>
-                  </div>
-                ))
-              )}
-            </div>
-          </>
-        )}
+            <p>{issue.recommendation}</p>
+          </div>
+        ))}
+      </div>
+    )}
+
+    <div className="section">
+      <h3>Задать вопрос</h3>
+
+      <textarea
+        value={question}
+        onChange={(e) => setQuestion(e.target.value)}
+        placeholder="Например: когда менять масло CVT?"
+      />
+
+      <button className="full" onClick={askAi}>
+        Спросить
+      </button>
+
+      <div className="chat">
+        {chat.map((msg, index) => (
+          <div className={`message ${msg.role}`} key={index}>
+            {msg.text}
+          </div>
+        ))}
+      </div>
+    </div>
+  </>
+)}
 
         {tab === "settings" && (
           <div className="section">
