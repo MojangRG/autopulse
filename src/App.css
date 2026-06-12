@@ -290,3 +290,21 @@ textarea:focus {
   background: #374151;
   margin-top: 10px;
 }
+.upload-button {
+  display: block;
+  width: 100%;
+  background: #2563eb;
+  color: white;
+  border-radius: 14px;
+  padding: 14px 16px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.mini-title {
+  color: #9ca3af;
+  text-align: center;
+  margin: 18px 0 10px;
+  font-size: 14px;
+}

@@ -13,48 +13,6 @@ const defaultData = {
   ],
 };
 
-const serviceRules = [
-  { title: "Масло двигателя", base: "ТО двигателя", interval: 10000, warn: 2000 },
-  { title: "Масляный фильтр", base: "ТО двигателя", interval: 10000, warn: 2000 },
-  { title: "Салонный фильтр", base: "ТО двигателя", interval: 10000, warn: 2000 },
-  { title: "Воздушный фильтр", base: "ТО двигателя", interval: 15000, warn: 3000 },
-  { title: "Свечи зажигания", base: "Свечи зажигания", interval: 100000, warn: 10000 },
-  { title: "Масло CVT", base: "Масло CVT", interval: 60000, warn: 10000 },
-  { title: "Масло редукторов", base: "Масло редукторов", interval: 60000, warn: 10000 },
-  { title: "Тормозная жидкость", base: "Тормозная жидкость", interval: 40000, warn: 5000 },
-];
-
-const commonIssues = [
-  {
-    title: "TCV / термоклапан системы охлаждения",
-    from: 80000,
-    to: 130000,
-    risk: "Средний",
-    note: "Для Forester SK встречается отказ термоклапана. Симптомы: Check Engine, странная температура двигателя, слабая печка.",
-  },
-  {
-    title: "Ступичные подшипники",
-    from: 90000,
-    to: 140000,
-    risk: "Средний",
-    note: "После 90 000 км стоит слушать гул на скорости и при перестроениях.",
-  },
-  {
-    title: "Втулки и стойки стабилизатора",
-    from: 80000,
-    to: 130000,
-    risk: "Средний",
-    note: "Проверять при стуках на мелких неровностях.",
-  },
-  {
-    title: "Состояние масла CVT",
-    from: 100000,
-    to: 130000,
-    risk: "Высокий",
-    note: "Если нет точного подтверждения замены масла вариатора, лучше не затягивать.",
-  },
-];
-
 const workOptions = [
   "ТО двигателя",
   "Масло двигателя",
@@ -69,6 +27,7 @@ const workOptions = [
   "Задние тормоза",
   "Чистка топливной системы",
   "Диагностика подвески",
+  "Другое",
 ];
 
 function App() {
@@ -77,6 +36,21 @@ function App() {
   const [vehicle, setVehicle] = useState(() => {
     const saved = localStorage.getItem("autopulse-vehicle");
     return saved ? JSON.parse(saved) : defaultVehicle;
+  });
+
+  const [profile, setProfile] = useState(() => {
+    const saved = localStorage.getItem("autopulse-profile");
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const [analysis, setAnalysis] = useState(() => {
+    const saved = localStorage.getItem("autopulse-analysis");
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const [data, setData] = useState(() => {
+    const saved = localStorage.getItem("autopulse-data");
+    return saved ? JSON.parse(saved) : defaultData;
   });
 
   const [vehicleForm, setVehicleForm] = useState({
@@ -91,29 +65,20 @@ function App() {
     mileage: 86000,
   });
 
-  const [data, setData] = useState(() => {
-    const saved = localStorage.getItem("autopulse-data");
-    return saved ? JSON.parse(saved) : defaultData;
-  });
-
-  const [profile, setProfile] = useState(() => {
-    const saved = localStorage.getItem("autopulse-profile");
-    return saved ? JSON.parse(saved) : null;
-  });
-
-  const [analysis, setAnalysis] = useState(() => {
-    const saved = localStorage.getItem("autopulse-analysis");
-    return saved ? JSON.parse(saved) : null;
-  });
-
   const [newMileage, setNewMileage] = useState(data.mileage);
   const [workTitle, setWorkTitle] = useState("ТО двигателя");
   const [workMileage, setWorkMileage] = useState(data.mileage);
   const [workCost, setWorkCost] = useState("");
+  const [workNote, setWorkNote] = useState("");
+
   const [question, setQuestion] = useState("");
   const [chat, setChat] = useState([]);
+
   const [isDetecting, setIsDetecting] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isAsking, setIsAsking] = useState(false);
+  const [isParsingSts, setIsParsingSts] = useState(false);
+  const [isParsingDoc, setIsParsingDoc] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("autopulse-data", JSON.stringify(data));
@@ -125,57 +90,48 @@ function App() {
     }
   }, [vehicle]);
 
-  const schedule = useMemo(() => {
-    return serviceRules.map((rule) => {
-      const matchedLogs = data.logs.filter(
-        (log) => log.title === rule.base || log.title === rule.title
-      );
-
-      const lastMileage = matchedLogs.length
-        ? Math.max(...matchedLogs.map((log) => Number(log.mileage)))
-        : 0;
-
-      const nextMileage = lastMileage + rule.interval;
-      const left = nextMileage - data.mileage;
-
-      let status = "Норма";
-      if (left <= 0) status = "Просрочено";
-      else if (left <= rule.warn) status = "Скоро";
-
-      return { ...rule, lastMileage, nextMileage, left, status };
-    });
-  }, [data]);
-
-  const urgent = schedule.filter((item) => item.status !== "Норма");
-  const overdue = schedule.filter((item) => item.status === "Просрочено");
-  const soon = schedule.filter((item) => item.status === "Скоро");
-
-  const activeRisks = commonIssues.filter(
-    (issue) => data.mileage >= issue.from && data.mileage <= issue.to
-  );
-
-  const aiSummary = useMemo(() => {
-    const messages = [];
-
-    if (overdue.length > 0) {
-      messages.push(`Есть просроченные работы: ${overdue.length}. Их лучше закрыть первыми.`);
-    } else {
-      messages.push("Просроченных работ нет.");
-    }
-
-    if (soon.length > 0) {
-      messages.push(`Скоро потребуется обслуживание: ${soon.length} поз.`);
-    }
-
-    if (activeRisks.length > 0) {
-      messages.push(`По пробегу активны типовые риски модели: ${activeRisks.length}.`);
-    }
-
-    return messages;
-  }, [overdue, soon, activeRisks]);
-
   function updateVehicleField(field, value) {
     setVehicleForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function saveProfile(profileData) {
+    setProfile(profileData);
+    localStorage.setItem("autopulse-profile", JSON.stringify(profileData));
+  }
+
+  function saveAnalysis(analysisData) {
+    setAnalysis(analysisData);
+    localStorage.setItem("autopulse-analysis", JSON.stringify(analysisData));
+  }
+
+  async function analyzeVehicle(customData = data, customProfile = profile, customVehicle = vehicle) {
+    if (!customVehicle || !customProfile || !customData) return;
+
+    try {
+      setIsAnalyzing(true);
+
+      const response = await fetch("/api/analyze-vehicle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vehicle: customVehicle,
+          profile: customProfile,
+          data: customData,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.details || result.error || "Analysis failed");
+      }
+
+      saveAnalysis(result.analysis);
+    } catch (error) {
+      alert("Ошибка анализа: " + error.message);
+    } finally {
+      setIsAnalyzing(false);
+    }
   }
 
   async function detectVehicleByVin() {
@@ -191,9 +147,7 @@ function App() {
 
       const response = await fetch("/api/create-vehicle-profile", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           vin,
           mileage: Number(vehicleForm.mileage || 0),
@@ -203,63 +157,163 @@ function App() {
       const result = await response.json();
 
       if (!response.ok) {
-        alert(result.error || result.details || "Не удалось определить автомобиль");
+        alert(result.details || result.error || "Не удалось определить автомобиль");
         return;
       }
 
-      setVehicle(result.vehicle);
-      setProfile(result.profile);
-
-      localStorage.setItem("autopulse-profile", JSON.stringify(result.profile));
-
-      setData((prev) => ({
-        ...prev,
+      const nextData = {
+        ...data,
         mileage: Number(vehicleForm.mileage || 0),
-      }));
+      };
 
-      setNewMileage(Number(vehicleForm.mileage || 0));
-      setWorkMileage(Number(vehicleForm.mileage || 0));
+      setVehicle(result.vehicle);
+      saveProfile(result.profile);
+      setData(nextData);
+      setNewMileage(nextData.mileage);
+      setWorkMileage(nextData.mileage);
       setTab("home");
+
+      setTimeout(() => {
+        analyzeVehicle(nextData, result.profile, result.vehicle);
+      }, 300);
     } catch (error) {
-      alert("Ошибка связи с сервером");
-      console.error(error);
+      alert("Ошибка связи с сервером: " + error.message);
     } finally {
       setIsDetecting(false);
     }
   }
 
-  async function analyzeVehicle() {
-    try {
-      setIsAnalyzing(true);
+  async function parseStsPhoto(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-      const response = await fetch("/api/analyze-vehicle", {
+    try {
+      setIsParsingSts(true);
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("mileage", String(vehicleForm.mileage || 0));
+
+      const response = await fetch("/api/parse-sts", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          vehicle,
-          profile,
-          data,
-        }),
+        body: formData,
       });
 
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.details || result.error || "Analysis failed");
+        throw new Error(result.details || result.error || "STS parse failed");
       }
 
-      setAnalysis(result.analysis);
-      localStorage.setItem("autopulse-analysis", JSON.stringify(result.analysis));
+      setVehicleForm((prev) => ({
+        ...prev,
+        vin: result.vehicle?.vin || prev.vin,
+        brand: result.vehicle?.brand || prev.brand,
+        model: result.vehicle?.model || prev.model,
+        generation: result.vehicle?.generation || prev.generation,
+        year: result.vehicle?.year || prev.year,
+        engine: result.vehicle?.engine || prev.engine,
+        transmission: result.vehicle?.transmission || prev.transmission,
+        drive: result.vehicle?.drive || prev.drive,
+      }));
+
+      if (result.vehicle && result.profile) {
+        const nextData = {
+          ...data,
+          mileage: Number(vehicleForm.mileage || 0),
+        };
+
+        setVehicle(result.vehicle);
+        saveProfile(result.profile);
+        setData(nextData);
+        setNewMileage(nextData.mileage);
+        setWorkMileage(nextData.mileage);
+        setTab("home");
+
+        setTimeout(() => {
+          analyzeVehicle(nextData, result.profile, result.vehicle);
+        }, 300);
+      }
     } catch (error) {
-      alert("Ошибка анализа: " + error.message);
+      alert("Ошибка распознавания СТС: " + error.message);
     } finally {
-      setIsAnalyzing(false);
+      setIsParsingSts(false);
+      event.target.value = "";
     }
   }
 
-  function saveVehicle() {
+  async function parseServiceDocument(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!vehicle) {
+      alert("Сначала добавьте автомобиль");
+      return;
+    }
+
+    try {
+      setIsParsingDoc(true);
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("vehicle", JSON.stringify(vehicle));
+      formData.append("profile", JSON.stringify(profile));
+      formData.append("mileage", String(data.mileage));
+
+      const response = await fetch("/api/parse-service-doc", {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.details || result.error || "Document parse failed");
+      }
+
+      const parsedLogs = Array.isArray(result.logs) ? result.logs : [];
+
+      if (parsedLogs.length === 0) {
+        alert("Не удалось найти работы в документе");
+        return;
+      }
+
+      const normalizedLogs = parsedLogs.map((log) => ({
+        id: Date.now() + Math.random(),
+        mileage: Number(log.mileage || data.mileage),
+        title: log.title || "Работа из документа",
+        cost: Number(log.cost || 0),
+        note: log.note || "Добавлено из документа",
+      }));
+
+      const maxMileage = Math.max(
+        data.mileage,
+        ...normalizedLogs.map((log) => Number(log.mileage || 0))
+      );
+
+      const nextData = {
+        ...data,
+        mileage: maxMileage,
+        logs: [...normalizedLogs, ...data.logs],
+      };
+
+      setData(nextData);
+      setNewMileage(maxMileage);
+      setWorkMileage(maxMileage);
+      setTab("journal");
+
+      setTimeout(() => {
+        analyzeVehicle(nextData, profile, vehicle);
+      }, 300);
+    } catch (error) {
+      alert("Ошибка обработки документа: " + error.message);
+    } finally {
+      setIsParsingDoc(false);
+      event.target.value = "";
+    }
+  }
+
+  function saveVehicleManually() {
     const newVehicle = {
       vin: vehicleForm.vin,
       brand: vehicleForm.brand,
@@ -269,17 +323,19 @@ function App() {
       engine: vehicleForm.engine,
       transmission: vehicleForm.transmission,
       drive: vehicleForm.drive,
+      market: "manual",
+    };
+
+    const nextData = {
+      ...data,
+      mileage: Number(vehicleForm.mileage),
     };
 
     setVehicle(newVehicle);
-
-    setData((prev) => ({
-      ...prev,
-      mileage: Number(vehicleForm.mileage),
-    }));
-
-    setNewMileage(Number(vehicleForm.mileage));
-    setWorkMileage(Number(vehicleForm.mileage));
+    setData(nextData);
+    setNewMileage(nextData.mileage);
+    setWorkMileage(nextData.mileage);
+    setTab("home");
   }
 
   function fillDemoVehicle() {
@@ -297,10 +353,13 @@ function App() {
   }
 
   function saveMileage() {
-    setData((prev) => ({
-      ...prev,
+    const nextData = {
+      ...data,
       mileage: Number(newMileage),
-    }));
+    };
+
+    setData(nextData);
+    setTimeout(() => analyzeVehicle(nextData, profile, vehicle), 300);
   }
 
   function addWork() {
@@ -309,18 +368,21 @@ function App() {
       mileage: Number(workMileage),
       title: workTitle,
       cost: Number(workCost || 0),
+      note: workNote,
     };
 
-    setData((prev) => ({
-      ...prev,
-      logs: [log, ...prev.logs],
-      mileage: Math.max(prev.mileage, Number(workMileage)),
-    }));
+    const nextData = {
+      ...data,
+      logs: [log, ...data.logs],
+      mileage: Math.max(data.mileage, Number(workMileage)),
+    };
 
+    setData(nextData);
     setWorkCost("");
-    setAnalysis(null);
-    localStorage.removeItem("autopulse-analysis");
+    setWorkNote("");
     setTab("journal");
+
+    setTimeout(() => analyzeVehicle(nextData, profile, vehicle), 300);
   }
 
   function resetData() {
@@ -331,12 +393,12 @@ function App() {
       localStorage.removeItem("autopulse-analysis");
 
       setVehicle(null);
+      setProfile(null);
+      setAnalysis(null);
       setData(defaultData);
       setNewMileage(defaultData.mileage);
       setWorkMileage(defaultData.mileage);
       setChat([]);
-      setProfile(null);
-      setAnalysis(null);
 
       setVehicleForm({
         vin: "",
@@ -359,6 +421,7 @@ function App() {
 
     const userQuestion = question;
     setQuestion("");
+    setIsAsking(true);
 
     setChat((prev) => [
       ...prev,
@@ -369,9 +432,7 @@ function App() {
     try {
       const response = await fetch("/api/ai-mechanic", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           vehicle,
           profile,
@@ -404,8 +465,45 @@ function App() {
         };
         return updated;
       });
+    } finally {
+      setIsAsking(false);
     }
   }
+
+  const schedule = useMemo(() => {
+    const rules = profile?.serviceItems?.length
+      ? profile.serviceItems.map((item) => ({
+          title: item.name,
+          base: item.name,
+          interval: item.intervalKm,
+          warn: item.warningBeforeKm || 2000,
+          notes: item.notes,
+        }))
+      : [];
+
+    return rules
+      .filter((rule) => rule.interval)
+      .map((rule) => {
+        const matchedLogs = data.logs.filter((log) =>
+          String(log.title).toLowerCase().includes(String(rule.title).toLowerCase())
+        );
+
+        const lastMileage = matchedLogs.length
+          ? Math.max(...matchedLogs.map((log) => Number(log.mileage)))
+          : 0;
+
+        const nextMileage = lastMileage + Number(rule.interval);
+        const left = nextMileage - data.mileage;
+
+        let status = "Норма";
+        if (left <= 0) status = "Просрочено";
+        else if (left <= rule.warn) status = "Скоро";
+
+        return { ...rule, lastMileage, nextMileage, left, status };
+      });
+  }, [data, profile]);
+
+  const urgent = schedule.filter((item) => item.status !== "Норма");
 
   if (!vehicle) {
     return (
@@ -416,10 +514,24 @@ function App() {
           <div className="section">
             <h3>Добавить автомобиль</h3>
 
+            <label className="upload-button">
+              📷 Добавить по фото СТС
+              <input type="file" accept="image/*" onChange={parseStsPhoto} hidden />
+            </label>
+
+            {isParsingSts && <p className="muted">Распознаю СТС...</p>}
+
             <input
               value={vehicleForm.vin}
               onChange={(e) => updateVehicleField("vin", e.target.value)}
               placeholder="VIN"
+            />
+
+            <input
+              type="number"
+              value={vehicleForm.mileage}
+              onChange={(e) => updateVehicleField("mileage", e.target.value)}
+              placeholder="Пробег"
             />
 
             <button
@@ -427,8 +539,10 @@ function App() {
               onClick={detectVehicleByVin}
               disabled={isDetecting}
             >
-              {isDetecting ? "🧠 Создаю профиль..." : "🔍 Определить автомобиль по VIN"}
+              {isDetecting ? "🧠 Создаю профиль..." : "🔍 Добавить по VIN"}
             </button>
+
+            <div className="mini-title">Ручное заполнение</div>
 
             <input
               value={vehicleForm.brand}
@@ -473,15 +587,8 @@ function App() {
               placeholder="Привод"
             />
 
-            <input
-              type="number"
-              value={vehicleForm.mileage}
-              onChange={(e) => updateVehicleField("mileage", e.target.value)}
-              placeholder="Пробег"
-            />
-
-            <button className="full" onClick={saveVehicle}>
-              Сохранить автомобиль вручную
+            <button className="full" onClick={saveVehicleManually}>
+              Сохранить вручную
             </button>
 
             <button className="full secondary" onClick={fillDemoVehicle}>
@@ -507,10 +614,8 @@ function App() {
           </p>
         </div>
 
-        <div className={`status ${urgent.length || activeRisks.length ? "warning" : "good"}`}>
-          {urgent.length || activeRisks.length
-            ? "🟡 Машина требует внимания"
-            : "🟢 Машина здорова"}
+        <div className={`status ${analysis ? "warning" : "good"}`}>
+          {analysis ? "🟡 Есть AI-приоритеты" : "🟢 Машина добавлена"}
         </div>
 
         {tab === "home" && (
@@ -518,7 +623,7 @@ function App() {
             <div className="section">
               <h3>Пробег</h3>
               <div className="big-number">
-                {data.mileage.toLocaleString("ru-RU")} км
+                {Number(data.mileage).toLocaleString("ru-RU")} км
               </div>
 
               <div className="row">
@@ -535,14 +640,14 @@ function App() {
             <div className="section">
               <h3>🎯 Что важно сейчас</h3>
 
-              <button className="full secondary" onClick={analyzeVehicle} disabled={isAnalyzing}>
+              <button className="full secondary" onClick={() => analyzeVehicle()} disabled={isAnalyzing}>
                 {isAnalyzing ? "Анализирую..." : "Обновить AI-анализ"}
               </button>
 
               {!analysis ? (
-                <p className="muted">Нажмите кнопку, чтобы получить 3 главных приоритета.</p>
+                <p className="muted">AI-анализ появится после добавления авто или обновления.</p>
               ) : (
-                analysis.topPriorities.map((item, index) => (
+                analysis.topPriorities?.map((item, index) => (
                   <div className="risk" key={index}>
                     <strong>
                       {index + 1}. {item.title}
@@ -560,18 +665,18 @@ function App() {
             </div>
 
             <div className="section">
-              <h3>Что требует внимания</h3>
+              <h3>По регламенту</h3>
 
               {urgent.length === 0 ? (
-                <p className="muted">Критичных работ нет.</p>
+                <p className="muted">Срочных работ по регламенту нет.</p>
               ) : (
                 urgent.map((item) => (
                   <div className="task" key={item.title}>
                     <div>
                       <strong>{item.title}</strong>
                       <span>
-                        Было: {item.lastMileage.toLocaleString("ru-RU")} км •
-                        Следующее: {item.nextMileage.toLocaleString("ru-RU")} км
+                        Было: {item.lastMileage.toLocaleString("ru-RU")} км • Следующее:{" "}
+                        {item.nextMileage.toLocaleString("ru-RU")} км
                       </span>
                     </div>
                     <b className={item.status === "Просрочено" ? "red" : "yellow"}>
@@ -587,6 +692,13 @@ function App() {
         {tab === "journal" && (
           <div className="section">
             <h3>Журнал работ</h3>
+
+            <label className="upload-button">
+              📄 Загрузить заказ-наряд / чек
+              <input type="file" accept="image/*,.pdf" onChange={parseServiceDocument} hidden />
+            </label>
+
+            {isParsingDoc && <p className="muted">Читаю документ...</p>}
 
             {[...data.logs]
               .sort((a, b) => b.mileage - a.mileage)
@@ -623,6 +735,12 @@ function App() {
               placeholder="Стоимость, ₽"
             />
 
+            <input
+              value={workNote}
+              onChange={(e) => setWorkNote(e.target.value)}
+              placeholder="Комментарий"
+            />
+
             <button className="full" onClick={addWork}>
               Добавить в журнал
             </button>
@@ -632,30 +750,16 @@ function App() {
         {tab === "ai" && (
           <>
             <div className="section">
-              <h3>AI Профиль автомобиля</h3>
-
-              {!profile ? (
-                <p className="muted">
-                  Профиль ещё не создан. Сбрось данные и добавь автомобиль через VIN.
-                </p>
-              ) : (
-                <p className="muted">
-                  Профиль создан. Главные выводы смотри на главной во вкладке «Что важно сейчас».
-                </p>
-              )}
-            </div>
-
-            <div className="section">
-              <h3>Задать вопрос</h3>
+              <h3>AI-механик</h3>
 
               <textarea
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
-                placeholder="Например: когда менять масло CVT?"
+                placeholder="Например: еду на 3000 км, что проверить?"
               />
 
-              <button className="full" onClick={askAi}>
-                Спросить
+              <button className="full" onClick={askAi} disabled={isAsking}>
+                {isAsking ? "Думаю..." : "Спросить"}
               </button>
 
               <div className="chat">
@@ -722,6 +826,7 @@ function App() {
         {tab === "settings" && (
           <div className="section">
             <h3>Настройки</h3>
+
             <button className="danger" onClick={resetData}>
               Сбросить данные
             </button>
