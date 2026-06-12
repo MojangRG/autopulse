@@ -319,55 +319,57 @@ setProfile(result.profile);
     }
   }
 
-  function askAi() {
-    if (!question.trim()) return;
+  async function askAi() {
+  if (!question.trim()) return;
 
-    const lower = question.toLowerCase();
+  const userQuestion = question;
+  setQuestion("");
 
-    let answer =
-      "Пока я могу отвечать только по базовой логике обслуживания. Позже подключим настоящий GPT.";
+  setChat((prev) => [
+    ...prev,
+    { role: "user", text: userQuestion },
+    { role: "ai", text: "Думаю..." },
+  ]);
 
-    if (lower.includes("масло")) {
-      const oilLogs = data.logs.filter(
-        (log) => log.title === "ТО двигателя" || log.title === "Масло двигателя"
-      );
+  try {
+    const response = await fetch("/api/ai-mechanic", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        vehicle,
+        profile,
+        data,
+        question: userQuestion,
+      }),
+    });
 
-      const lastOilMileage = oilLogs.length
-        ? Math.max(...oilLogs.map((log) => Number(log.mileage)))
-        : 0;
+    const result = await response.json();
 
-      answer = `Масло двигателя менялось на ${lastOilMileage.toLocaleString(
-        "ru-RU"
-      )} км. Следующее ТО ориентировочно через каждые 10 000 км.`;
+    if (!response.ok) {
+      throw new Error(result.details || result.error || "AI mechanic failed");
     }
 
-    if (lower.includes("вариатор") || lower.includes("cvt")) {
-      answer =
-        "Для CVT лучше планировать замену масла в районе 110–120 тыс. км, особенно если нет точного подтверждения прошлой замены.";
-    }
-
-    if (lower.includes("свеч")) {
-      answer = "Свечи зажигания стоит планировать примерно к 95–100 тыс. км.";
-    }
-
-    if (lower.includes("тормоз")) {
-      answer =
-        "Передние диски и колодки менялись на 68 000 км. Сейчас стоит отдельно контролировать задние тормоза.";
-    }
-
-    if (lower.includes("ступиц") || lower.includes("гул")) {
-      answer =
-        "На этом пробеге стоит проверить ступичные подшипники. Симптомы: гул на скорости, изменение звука при перестроении.";
-    }
-
-    setChat((prev) => [
-      ...prev,
-      { role: "user", text: question },
-      { role: "ai", text: answer },
-    ]);
-
-    setQuestion("");
+    setChat((prev) => {
+      const updated = [...prev];
+      updated[updated.length - 1] = {
+        role: "ai",
+        text: result.answer,
+      };
+      return updated;
+    });
+  } catch (error) {
+    setChat((prev) => {
+      const updated = [...prev];
+      updated[updated.length - 1] = {
+        role: "ai",
+        text: "Ошибка AI-механика: " + error.message,
+      };
+      return updated;
+    });
   }
+}
 
   if (!vehicle) {
     return (
