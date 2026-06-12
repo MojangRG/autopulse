@@ -285,3 +285,8 @@ textarea:focus {
   border: 1px solid #2f3542;
   margin-right: 24px;
 }
+
+.secondary {
+  background: #374151;
+  margin-top: 10px;
+}

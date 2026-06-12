@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import BottomNav from "./components/BottomNav";
 import "./App.css";
 
-const vehicle = {
+const defaultVehicle = null;
+
+const demoVehicle = {
+  vin: "",
   brand: "Subaru",
   model: "Forester",
   generation: "SK",
@@ -81,6 +84,22 @@ const workOptions = [
 
 function App() {
   const [tab, setTab] = useState("home");
+  const [vehicle, setVehicle] = useState(() => {
+  const saved = localStorage.getItem("autopulse-vehicle");
+  return saved ? JSON.parse(saved) : defaultVehicle;
+});
+
+const [vehicleForm, setVehicleForm] = useState({
+  vin: "",
+  brand: "",
+  model: "",
+  generation: "",
+  year: "",
+  engine: "",
+  transmission: "",
+  drive: "",
+  mileage: 86000,
+});
 
   const [data, setData] = useState(() => {
     const saved = localStorage.getItem("autopulse-data");
@@ -95,8 +114,18 @@ function App() {
 const [chat, setChat] = useState([]);
 
   useEffect(() => {
-    localStorage.setItem("autopulse-data", JSON.stringify(data));
-  }, [data]);
+  localStorage.setItem("autopulse-data", JSON.stringify(data));
+}, [data]);
+
+useEffect(() => {
+  if (vehicle) {
+    localStorage.setItem(
+      "autopulse-vehicle",
+      JSON.stringify(vehicle)
+    );
+  }
+}, [vehicle]);
+
 
   const schedule = useMemo(() => {
     return serviceRules.map((rule) => {
@@ -187,14 +216,31 @@ const [chat, setChat] = useState([]);
   }
 
   function resetData() {
-    if (confirm("Сбросить данные AutoPulse?")) {
-      localStorage.removeItem("autopulse-data");
-      setData(defaultData);
-      setNewMileage(defaultData.mileage);
-      setWorkMileage(defaultData.mileage);
-      setTab("home");
-    }
+  if (confirm("Сбросить данные AutoPulse?")) {
+    localStorage.removeItem("autopulse-data");
+    localStorage.removeItem("autopulse-vehicle");
+
+    setVehicle(null);
+
+    setData(defaultData);
+    setNewMileage(defaultData.mileage);
+    setWorkMileage(defaultData.mileage);
+
+    setVehicleForm({
+      vin: "",
+      brand: "",
+      model: "",
+      generation: "",
+      year: "",
+      engine: "",
+      transmission: "",
+      drive: "",
+      mileage: 86000,
+    });
+
+    setTab("home");
   }
+}
 
 function askAi() {
   if (!question.trim()) return;
@@ -234,6 +280,132 @@ function askAi() {
   ]);
 
   setQuestion("");
+}
+
+function updateVehicleField(field, value) {
+  setVehicleForm((prev) => ({
+    ...prev,
+    [field]: value,
+  }));
+}
+
+function saveVehicle() {
+  const newVehicle = {
+    vin: vehicleForm.vin,
+    brand: vehicleForm.brand,
+    model: vehicleForm.model,
+    generation: vehicleForm.generation,
+    year: Number(vehicleForm.year),
+    engine: vehicleForm.engine,
+    transmission: vehicleForm.transmission,
+    drive: vehicleForm.drive,
+  };
+
+  setVehicle(newVehicle);
+
+  setData((prev) => ({
+    ...prev,
+    mileage: Number(vehicleForm.mileage),
+  }));
+
+  setNewMileage(Number(vehicleForm.mileage));
+  setWorkMileage(Number(vehicleForm.mileage));
+}
+
+function fillDemoVehicle() {
+  setVehicleForm({
+    vin: "JF1SK7AC2MG117103",
+    brand: "Subaru",
+    model: "Forester",
+    generation: "SK",
+    year: "2020",
+    engine: "FB20",
+    transmission: "CVT",
+    drive: "AWD",
+    mileage: 86000,
+  });
+}
+
+if (!vehicle) {
+  return (
+    <div className="app">
+      <div className="card">
+        <h1>🚗 AutoPulse</h1>
+
+        <div className="section">
+          <h3>Добавить автомобиль</h3>
+
+          <input
+            value={vehicleForm.vin}
+            onChange={(e) => updateVehicleField("vin", e.target.value)}
+            placeholder="VIN"
+          />
+
+          <input
+            value={vehicleForm.brand}
+            onChange={(e) => updateVehicleField("brand", e.target.value)}
+            placeholder="Марка"
+          />
+
+          <input
+            value={vehicleForm.model}
+            onChange={(e) => updateVehicleField("model", e.target.value)}
+            placeholder="Модель"
+          />
+
+          <input
+            value={vehicleForm.generation}
+            onChange={(e) => updateVehicleField("generation", e.target.value)}
+            placeholder="Поколение"
+          />
+
+          <input
+            type="number"
+            value={vehicleForm.year}
+            onChange={(e) => updateVehicleField("year", e.target.value)}
+            placeholder="Год выпуска"
+          />
+
+          <input
+            value={vehicleForm.engine}
+            onChange={(e) => updateVehicleField("engine", e.target.value)}
+            placeholder="Двигатель"
+          />
+
+          <input
+            value={vehicleForm.transmission}
+            onChange={(e) => updateVehicleField("transmission", e.target.value)}
+            placeholder="Коробка"
+          />
+
+          <input
+            value={vehicleForm.drive}
+            onChange={(e) => updateVehicleField("drive", e.target.value)}
+            placeholder="Привод"
+          />
+
+          <input
+            type="number"
+            value={vehicleForm.mileage}
+            onChange={(e) => updateVehicleField("mileage", e.target.value)}
+            placeholder="Пробег"
+          />
+
+          <button className="full" onClick={saveVehicle}>
+            Сохранить автомобиль
+          </button>
+
+          <button className="full secondary" onClick={fillDemoVehicle}>
+            Заполнить демо Subaru
+          </button>
+
+          <p className="muted">
+            Следующая версия будет определять автомобиль по VIN и фото СТС.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
   return (
