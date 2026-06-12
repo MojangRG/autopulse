@@ -1,8 +1,14 @@
 import OpenAI from "openai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+function getOpenAI() {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY is missing");
+  }
+
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+}
 
 function mockVinProvider(vin) {
   const normalizedVin = String(vin || "").trim().toUpperCase();
@@ -114,6 +120,8 @@ export default async function handler(req, res) {
         error: "VIN пока не найден в демо-поставщике",
       });
     }
+
+const openai = getOpenAI();
 
     const response = await openai.responses.create({
       model: "gpt-4.1-mini",
