@@ -4,17 +4,6 @@ import "./App.css";
 
 const defaultVehicle = null;
 
-const demoVehicle = {
-  vin: "",
-  brand: "Subaru",
-  model: "Forester",
-  generation: "SK",
-  year: 2020,
-  engine: "FB20",
-  transmission: "CVT",
-  drive: "AWD",
-};
-
 const defaultData = {
   mileage: 86000,
   logs: [
@@ -84,22 +73,23 @@ const workOptions = [
 
 function App() {
   const [tab, setTab] = useState("home");
-  const [vehicle, setVehicle] = useState(() => {
-  const saved = localStorage.getItem("autopulse-vehicle");
-  return saved ? JSON.parse(saved) : defaultVehicle;
-});
 
-const [vehicleForm, setVehicleForm] = useState({
-  vin: "",
-  brand: "",
-  model: "",
-  generation: "",
-  year: "",
-  engine: "",
-  transmission: "",
-  drive: "",
-  mileage: 86000,
-});
+  const [vehicle, setVehicle] = useState(() => {
+    const saved = localStorage.getItem("autopulse-vehicle");
+    return saved ? JSON.parse(saved) : defaultVehicle;
+  });
+
+  const [vehicleForm, setVehicleForm] = useState({
+    vin: "",
+    brand: "",
+    model: "",
+    generation: "",
+    year: "",
+    engine: "",
+    transmission: "",
+    drive: "",
+    mileage: 86000,
+  });
 
   const [data, setData] = useState(() => {
     const saved = localStorage.getItem("autopulse-data");
@@ -111,21 +101,18 @@ const [vehicleForm, setVehicleForm] = useState({
   const [workMileage, setWorkMileage] = useState(data.mileage);
   const [workCost, setWorkCost] = useState("");
   const [question, setQuestion] = useState("");
-const [chat, setChat] = useState([]);
+  const [chat, setChat] = useState([]);
+  const [isDetecting, setIsDetecting] = useState(false);
 
   useEffect(() => {
-  localStorage.setItem("autopulse-data", JSON.stringify(data));
-}, [data]);
+    localStorage.setItem("autopulse-data", JSON.stringify(data));
+  }, [data]);
 
-useEffect(() => {
-  if (vehicle) {
-    localStorage.setItem(
-      "autopulse-vehicle",
-      JSON.stringify(vehicle)
-    );
-  }
-}, [vehicle]);
-
+  useEffect(() => {
+    if (vehicle) {
+      localStorage.setItem("autopulse-vehicle", JSON.stringify(vehicle));
+    }
+  }, [vehicle]);
 
   const schedule = useMemo(() => {
     return serviceRules.map((rule) => {
@@ -144,13 +131,7 @@ useEffect(() => {
       if (left <= 0) status = "Просрочено";
       else if (left <= rule.warn) status = "Скоро";
 
-      return {
-        ...rule,
-        lastMileage,
-        nextMileage,
-        left,
-        status,
-      };
+      return { ...rule, lastMileage, nextMileage, left, status };
     });
   }, [data]);
 
@@ -190,6 +171,96 @@ useEffect(() => {
     return messages;
   }, [overdue, soon, activeRisks, data.mileage]);
 
+  function updateVehicleField(field, value) {
+    setVehicleForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  async function detectVehicleByVin() {
+    const vin = vehicleForm.vin.trim().toUpperCase();
+
+    if (!vin) {
+      alert("Введите VIN");
+      return;
+    }
+
+    try {
+      setIsDetecting(true);
+
+      const response = await fetch("/api/create-vehicle-profile", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          vin,
+          mileage: Number(vehicleForm.mileage || 0),
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        alert(result.error || result.details || "Не удалось определить автомобиль");
+        return;
+      }
+
+      setVehicle(result.vehicle);
+
+      localStorage.setItem("autopulse-profile", JSON.stringify(result.profile));
+
+      setData((prev) => ({
+        ...prev,
+        mileage: Number(vehicleForm.mileage || 0),
+      }));
+
+      setNewMileage(Number(vehicleForm.mileage || 0));
+      setWorkMileage(Number(vehicleForm.mileage || 0));
+      setTab("home");
+    } catch (error) {
+      alert("Ошибка связи с сервером");
+      console.error(error);
+    } finally {
+      setIsDetecting(false);
+    }
+  }
+
+  function saveVehicle() {
+    const newVehicle = {
+      vin: vehicleForm.vin,
+      brand: vehicleForm.brand,
+      model: vehicleForm.model,
+      generation: vehicleForm.generation,
+      year: Number(vehicleForm.year),
+      engine: vehicleForm.engine,
+      transmission: vehicleForm.transmission,
+      drive: vehicleForm.drive,
+    };
+
+    setVehicle(newVehicle);
+
+    setData((prev) => ({
+      ...prev,
+      mileage: Number(vehicleForm.mileage),
+    }));
+
+    setNewMileage(Number(vehicleForm.mileage));
+    setWorkMileage(Number(vehicleForm.mileage));
+  }
+
+  function fillDemoVehicle() {
+    setVehicleForm({
+      vin: "JF1SK7AC2MG117103",
+      brand: "Subaru",
+      model: "Forester",
+      generation: "SK",
+      year: "2020",
+      engine: "FB20",
+      transmission: "CVT",
+      drive: "AWD",
+      mileage: 86000,
+    });
+  }
+
   function saveMileage() {
     setData((prev) => ({
       ...prev,
@@ -216,270 +287,172 @@ useEffect(() => {
   }
 
   function resetData() {
-  if (confirm("Сбросить данные AutoPulse?")) {
-    localStorage.removeItem("autopulse-data");
-    localStorage.removeItem("autopulse-vehicle");
+    if (confirm("Сбросить данные AutoPulse?")) {
+      localStorage.removeItem("autopulse-data");
+      localStorage.removeItem("autopulse-vehicle");
+      localStorage.removeItem("autopulse-profile");
 
-    setVehicle(null);
+      setVehicle(null);
+      setData(defaultData);
+      setNewMileage(defaultData.mileage);
+      setWorkMileage(defaultData.mileage);
+      setChat([]);
 
-    setData(defaultData);
-    setNewMileage(defaultData.mileage);
-    setWorkMileage(defaultData.mileage);
+      setVehicleForm({
+        vin: "",
+        brand: "",
+        model: "",
+        generation: "",
+        year: "",
+        engine: "",
+        transmission: "",
+        drive: "",
+        mileage: 86000,
+      });
 
-    setVehicleForm({
-      vin: "",
-      brand: "",
-      model: "",
-      generation: "",
-      year: "",
-      engine: "",
-      transmission: "",
-      drive: "",
-      mileage: 86000,
-    });
-
-    setTab("home");
-  }
-}
-
-function askAi() {
-  if (!question.trim()) return;
-
-  const lower = question.toLowerCase();
-
-  let answer = "Пока я могу отвечать только по базовой логике обслуживания. Позже подключим настоящий GPT.";
-
-  if (lower.includes("масло")) {
-    answer = `Масло двигателя менялось на ${Math.max(
-      ...data.logs
-        .filter((log) => log.title === "ТО двигателя" || log.title === "Масло двигателя")
-        .map((log) => Number(log.mileage))
-    ).toLocaleString("ru-RU")} км. Следующее ТО ориентировочно через каждые 10 000 км.`;
+      setTab("home");
+    }
   }
 
-  if (lower.includes("вариатор") || lower.includes("cvt")) {
-    answer = "Для CVT лучше планировать замену масла в районе 110–120 тыс. км, особенно если нет точного подтверждения прошлой замены.";
-  }
+  function askAi() {
+    if (!question.trim()) return;
 
-  if (lower.includes("свеч")) {
-    answer = "Свечи зажигания стоит планировать примерно к 95–100 тыс. км.";
-  }
+    const lower = question.toLowerCase();
 
-  if (lower.includes("тормоз")) {
-    answer = "Передние диски и колодки менялись на 68 000 км. Сейчас стоит отдельно контролировать задние тормоза.";
-  }
+    let answer =
+      "Пока я могу отвечать только по базовой логике обслуживания. Позже подключим настоящий GPT.";
 
-  if (lower.includes("ступиц") || lower.includes("гул")) {
-    answer = "На этом пробеге стоит проверить ступичные подшипники. Симптомы: гул на скорости, изменение звука при перестроении.";
-  }
+    if (lower.includes("масло")) {
+      const oilLogs = data.logs.filter(
+        (log) => log.title === "ТО двигателя" || log.title === "Масло двигателя"
+      );
 
-  setChat((prev) => [
-    ...prev,
-    { role: "user", text: question },
-    { role: "ai", text: answer },
-  ]);
+      const lastOilMileage = oilLogs.length
+        ? Math.max(...oilLogs.map((log) => Number(log.mileage)))
+        : 0;
 
-  setQuestion("");
-}
-
-function updateVehicleField(field, value) {
-  setVehicleForm((prev) => ({
-    ...prev,
-    [field]: value,
-  }));
-}
-
-function saveVehicle() {
-  const newVehicle = {
-    vin: vehicleForm.vin,
-    brand: vehicleForm.brand,
-    model: vehicleForm.model,
-    generation: vehicleForm.generation,
-    year: Number(vehicleForm.year),
-    engine: vehicleForm.engine,
-    transmission: vehicleForm.transmission,
-    drive: vehicleForm.drive,
-  };
-
-  setVehicle(newVehicle);
-
-  setData((prev) => ({
-    ...prev,
-    mileage: Number(vehicleForm.mileage),
-  }));
-
-  setNewMileage(Number(vehicleForm.mileage));
-  setWorkMileage(Number(vehicleForm.mileage));
-}
-
-function fillDemoVehicle() {
-  setVehicleForm({
-    vin: "JF1SK7AC2MG117103",
-    brand: "Subaru",
-    model: "Forester",
-    generation: "SK",
-    year: "2020",
-    engine: "FB20",
-    transmission: "CVT",
-    drive: "AWD",
-    mileage: 86000,
-  });
-}
-
-async function detectVehicleByVin() {
-  const vin = vehicleForm.vin.trim().toUpperCase();
-
-  if (!vin) {
-    alert("Введите VIN");
-    return;
-  }
-
-  try {
-    const response = await fetch("/api/create-vehicle-profile", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        vin,
-        mileage: Number(vehicleForm.mileage || 0),
-      }),
-    });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      alert(result.error || "Не удалось определить автомобиль");
-      return;
+      answer = `Масло двигателя менялось на ${lastOilMileage.toLocaleString(
+        "ru-RU"
+      )} км. Следующее ТО ориентировочно через каждые 10 000 км.`;
     }
 
-    setVehicle(result.vehicle);
+    if (lower.includes("вариатор") || lower.includes("cvt")) {
+      answer =
+        "Для CVT лучше планировать замену масла в районе 110–120 тыс. км, особенно если нет точного подтверждения прошлой замены.";
+    }
 
-    localStorage.setItem(
-      "autopulse-profile",
-      JSON.stringify(result.profile)
-    );
+    if (lower.includes("свеч")) {
+      answer = "Свечи зажигания стоит планировать примерно к 95–100 тыс. км.";
+    }
 
-    setData((prev) => ({
+    if (lower.includes("тормоз")) {
+      answer =
+        "Передние диски и колодки менялись на 68 000 км. Сейчас стоит отдельно контролировать задние тормоза.";
+    }
+
+    if (lower.includes("ступиц") || lower.includes("гул")) {
+      answer =
+        "На этом пробеге стоит проверить ступичные подшипники. Симптомы: гул на скорости, изменение звука при перестроении.";
+    }
+
+    setChat((prev) => [
       ...prev,
-      mileage: Number(vehicleForm.mileage || 0),
-    }));
+      { role: "user", text: question },
+      { role: "ai", text: answer },
+    ]);
 
-    setNewMileage(Number(vehicleForm.mileage || 0));
-    setWorkMileage(Number(vehicleForm.mileage || 0));
-
-    setTab("home");
-  } catch (error) {
-    alert("Ошибка связи с сервером");
-    console.error(error);
-  }
-}
-
-  // Временная заглушка поставщика данных.
-  // Позже здесь будет реальный запрос к VIN API.
-  if (vin === "JF1SK7AC2MG117103") {
-    setVehicleForm((prev) => ({
-      ...prev,
-      vin,
-      brand: "Subaru",
-      model: "Forester",
-      generation: "SK",
-      year: "2020",
-      engine: "FB20",
-      transmission: "CVT",
-      drive: "AWD",
-    }));
-
-    return;
+    setQuestion("");
   }
 
-  alert("Пока этот VIN не найден в демо-базе. Позже подключим реального поставщика.");
-}
+  if (!vehicle) {
+    return (
+      <div className="app">
+        <div className="card">
+          <h1>🚗 AutoPulse</h1>
 
-if (!vehicle) {
-  return (
-    <div className="app">
-      <div className="card">
-        <h1>🚗 AutoPulse</h1>
+          <div className="section">
+            <h3>Добавить автомобиль</h3>
 
-        <div className="section">
-          <h3>Добавить автомобиль</h3>
+            <input
+              value={vehicleForm.vin}
+              onChange={(e) => updateVehicleField("vin", e.target.value)}
+              placeholder="VIN"
+            />
 
-          <input
-            value={vehicleForm.vin}
-            onChange={(e) => updateVehicleField("vin", e.target.value)}
-            placeholder="VIN"
-          />
-          <button className="full secondary" onClick={detectVehicleByVin}>
-  🔍 Определить автомобиль по VIN
-</button>
+            <button
+              className="full secondary"
+              onClick={detectVehicleByVin}
+              disabled={isDetecting}
+            >
+              {isDetecting ? "🧠 Создаю профиль..." : "🔍 Определить автомобиль по VIN"}
+            </button>
 
-          <input
-            value={vehicleForm.brand}
-            onChange={(e) => updateVehicleField("brand", e.target.value)}
-            placeholder="Марка"
-          />
+            <input
+              value={vehicleForm.brand}
+              onChange={(e) => updateVehicleField("brand", e.target.value)}
+              placeholder="Марка"
+            />
 
-          <input
-            value={vehicleForm.model}
-            onChange={(e) => updateVehicleField("model", e.target.value)}
-            placeholder="Модель"
-          />
+            <input
+              value={vehicleForm.model}
+              onChange={(e) => updateVehicleField("model", e.target.value)}
+              placeholder="Модель"
+            />
 
-          <input
-            value={vehicleForm.generation}
-            onChange={(e) => updateVehicleField("generation", e.target.value)}
-            placeholder="Поколение"
-          />
+            <input
+              value={vehicleForm.generation}
+              onChange={(e) => updateVehicleField("generation", e.target.value)}
+              placeholder="Поколение"
+            />
 
-          <input
-            type="number"
-            value={vehicleForm.year}
-            onChange={(e) => updateVehicleField("year", e.target.value)}
-            placeholder="Год выпуска"
-          />
+            <input
+              type="number"
+              value={vehicleForm.year}
+              onChange={(e) => updateVehicleField("year", e.target.value)}
+              placeholder="Год выпуска"
+            />
 
-          <input
-            value={vehicleForm.engine}
-            onChange={(e) => updateVehicleField("engine", e.target.value)}
-            placeholder="Двигатель"
-          />
+            <input
+              value={vehicleForm.engine}
+              onChange={(e) => updateVehicleField("engine", e.target.value)}
+              placeholder="Двигатель"
+            />
 
-          <input
-            value={vehicleForm.transmission}
-            onChange={(e) => updateVehicleField("transmission", e.target.value)}
-            placeholder="Коробка"
-          />
+            <input
+              value={vehicleForm.transmission}
+              onChange={(e) => updateVehicleField("transmission", e.target.value)}
+              placeholder="Коробка"
+            />
 
-          <input
-            value={vehicleForm.drive}
-            onChange={(e) => updateVehicleField("drive", e.target.value)}
-            placeholder="Привод"
-          />
+            <input
+              value={vehicleForm.drive}
+              onChange={(e) => updateVehicleField("drive", e.target.value)}
+              placeholder="Привод"
+            />
 
-          <input
-            type="number"
-            value={vehicleForm.mileage}
-            onChange={(e) => updateVehicleField("mileage", e.target.value)}
-            placeholder="Пробег"
-          />
+            <input
+              type="number"
+              value={vehicleForm.mileage}
+              onChange={(e) => updateVehicleField("mileage", e.target.value)}
+              placeholder="Пробег"
+            />
 
-          <button className="full" onClick={saveVehicle}>
-            Сохранить автомобиль
-          </button>
+            <button className="full" onClick={saveVehicle}>
+              Сохранить автомобиль вручную
+            </button>
 
-          <button className="full secondary" onClick={fillDemoVehicle}>
-            Заполнить демо Subaru
-          </button>
+            <button className="full secondary" onClick={fillDemoVehicle}>
+              Заполнить демо Subaru
+            </button>
 
-          <p className="muted">
-            Следующая версия будет определять автомобиль по VIN и фото СТС.
-          </p>
+            <p className="muted">
+              VIN-кнопка уже идёт через backend: поставщик данных → GPT → сервисный профиль.
+            </p>
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   return (
     <div className="app">
@@ -601,27 +574,29 @@ if (!vehicle) {
                 </div>
               ))}
             </div>
-<div className="section">
-  <h3>Задать вопрос</h3>
 
-  <textarea
-    value={question}
-    onChange={(e) => setQuestion(e.target.value)}
-    placeholder="Например: когда менять масло CVT?"
-  />
+            <div className="section">
+              <h3>Задать вопрос</h3>
 
-  <button className="full" onClick={askAi}>
-    Спросить
-  </button>
+              <textarea
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                placeholder="Например: когда менять масло CVT?"
+              />
 
-  <div className="chat">
-    {chat.map((msg, index) => (
-      <div className={`message ${msg.role}`} key={index}>
-        {msg.text}
-      </div>
-    ))}
-  </div>
-</div>
+              <button className="full" onClick={askAi}>
+                Спросить
+              </button>
+
+              <div className="chat">
+                {chat.map((msg, index) => (
+                  <div className={`message ${msg.role}`} key={index}>
+                    {msg.text}
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="section">
               <h3>Ближайшие работы</h3>
 
@@ -632,9 +607,7 @@ if (!vehicle) {
                   <div className="task" key={item.title}>
                     <div>
                       <strong>{item.title}</strong>
-                      <span>
-                        Осталось: {item.left.toLocaleString("ru-RU")} км
-                      </span>
+                      <span>Осталось: {item.left.toLocaleString("ru-RU")} км</span>
                     </div>
                     <b className={item.status === "Просрочено" ? "red" : "yellow"}>
                       {item.status}
