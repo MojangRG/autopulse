@@ -326,13 +326,54 @@ function fillDemoVehicle() {
   });
 }
 
-function detectVehicleByVin() {
+async function detectVehicleByVin() {
   const vin = vehicleForm.vin.trim().toUpperCase();
 
   if (!vin) {
     alert("Введите VIN");
     return;
   }
+
+  try {
+    const response = await fetch("/api/create-vehicle-profile", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        vin,
+        mileage: Number(vehicleForm.mileage || 0),
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      alert(result.error || "Не удалось определить автомобиль");
+      return;
+    }
+
+    setVehicle(result.vehicle);
+
+    localStorage.setItem(
+      "autopulse-profile",
+      JSON.stringify(result.profile)
+    );
+
+    setData((prev) => ({
+      ...prev,
+      mileage: Number(vehicleForm.mileage || 0),
+    }));
+
+    setNewMileage(Number(vehicleForm.mileage || 0));
+    setWorkMileage(Number(vehicleForm.mileage || 0));
+
+    setTab("home");
+  } catch (error) {
+    alert("Ошибка связи с сервером");
+    console.error(error);
+  }
+}
 
   // Временная заглушка поставщика данных.
   // Позже здесь будет реальный запрос к VIN API.
