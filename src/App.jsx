@@ -30,6 +30,54 @@ const workOptions = [
   "Другое",
 ];
 
+function compressImage(file, maxWidth = 1400, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith("image/")) {
+      resolve(file);
+      return;
+    }
+
+    const img = new Image();
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width);
+        const canvas = document.createElement("canvas");
+
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error("Не удалось сжать изображение"));
+              return;
+            }
+
+            const compressedFile = new File([blob], "compressed.jpg", {
+              type: "image/jpeg",
+            });
+
+            resolve(compressedFile);
+          },
+          "image/jpeg",
+          quality
+        );
+      };
+
+      img.onerror = () => reject(new Error("Не удалось прочитать изображение"));
+      img.src = reader.result;
+    };
+
+    reader.onerror = () => reject(new Error("Не удалось открыть файл"));
+    reader.readAsDataURL(file);
+  });
+}
+
 function App() {
   const [tab, setTab] = useState("home");
 
@@ -184,8 +232,10 @@ function App() {
   }
 
   async function parseStsPhoto(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const originalFile = event.target.files?.[0];
+if (!originalFile) return;
+
+const file = await compressImage(originalFile);
 
     try {
       setIsParsingSts(true);
@@ -243,8 +293,10 @@ function App() {
   }
 
   async function parseServiceDocument(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const originalFile = event.target.files?.[0];
+if (!originalFile) return;
+
+const file = await compressImage(originalFile);
 
     if (!vehicle) {
       alert("Сначала добавьте автомобиль");
