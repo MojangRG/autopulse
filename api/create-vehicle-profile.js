@@ -6,8 +6,9 @@ function getOpenAI() {
   }
 
   return new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
+  apiKey: process.env.OPENAI_API_KEY,
+  baseURL: "https://api.aitunnel.ru/v1",
+});
 }
 
 function mockVinProvider(vin) {
