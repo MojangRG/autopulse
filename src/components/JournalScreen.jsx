@@ -31,7 +31,7 @@ export default function JournalScreen({ logs, isParsingDoc, onScan, onManualAdd,
 
       <div style={{ padding: "0 16px 14px" }}>
         <label className={`upload-label primary${isParsingDoc ? " loading" : ""}`}>
-          <input type="file" accept="image/*,.pdf" onChange={onScan} hidden disabled={isParsingDoc} />
+          <input type="file" accept="image/*" onChange={onScan} hidden disabled={isParsingDoc} />
           <span>📷</span>
           {isParsingDoc ? "Читаю документ..." : "Отсканировать документ"}
         </label>

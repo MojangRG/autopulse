@@ -1,4 +1,4 @@
-export default function BottomNav({ tab, setTab }) {
+export default function BottomNav({ tab, setTab, reminderCount = 0 }) {
   const items = [
     ["home",     "🏠", "Главная"],
     ["journal",  "📋", "История"],
@@ -15,7 +15,12 @@ export default function BottomNav({ tab, setTab }) {
           className={`nav-btn${tab === id ? " active" : ""}`}
           onClick={() => setTab(id)}
         >
-          <span className="nav-btn-icon">{icon}</span>
+          <span className="nav-btn-icon-wrap">
+            <span className="nav-btn-icon">{icon}</span>
+            {id === "home" && reminderCount > 0 && (
+              <span className="nav-badge">{reminderCount > 9 ? "9+" : reminderCount}</span>
+            )}
+          </span>
           <span className="nav-btn-label">{label}</span>
         </button>
       ))}

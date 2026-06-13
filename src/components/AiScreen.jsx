@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+
 function km(v) { return Number(v || 0).toLocaleString("ru-RU") + " км"; }
 
 export default function AiScreen({
@@ -12,6 +14,14 @@ export default function AiScreen({
   quickQuestions,
   mileage,
 }) {
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [chat]);
+
   function handleKey(e) {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onAsk(); }
   }
@@ -41,7 +51,7 @@ export default function AiScreen({
         </div>
       )}
 
-      <div className="chat-scroll-area">
+      <div className="chat-scroll-area" ref={scrollRef}>
         {!hasChat && localBriefing && (
           <div className="briefing-card">
             <div className="briefing-label">Оценка механика</div>

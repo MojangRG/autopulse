@@ -13,82 +13,100 @@ React 19 + Vite 8 single-page app. No backend server — API routes served by Vi
 
 ## Files Added
 
-(This commit adds governance files only.)
+(This session — Digital Twin Foundation phase)
 
-- `AUTOPULSE_MASTER_SPEC.md`
-- `AUTOPULSE_PRODUCT_GAPS.md`
-- `AUTOPULSE_STATE.md`
-- `AUTOPULSE_CHANGELOG.md`
+None added. All changes were to existing files.
 
 ---
 
 ## Files Modified
 
-(None in this commit.)
+- `src/utils/orchestrator.js` — Added mileage learning, status sentence, primary action agent, vehicleBrain export, time-based scheduling (intervalMonths), ownership insights
+- `src/utils/normalizer.js` — Added note-based compound matching (log.note parsed for service keywords)
+- `src/components/HomeScreen.jsx` — Complete rewrite: vehicle hero, AI status sentence, single primary action with WHY breakdown, reminder card, last event card, secondary urgents
+- `src/components/BottomNav.jsx` — Added reminder badge on home tab
+- `src/components/PassportScreen.jsx` — Evolved to Vehicle Passport: 7 sections (Identity, Health, Predictions, Unknown Areas, AI Recommendations, Coverage, Ownership Insights)
+- `src/components/AiScreen.jsx` — Added scroll-to-bottom on new messages; chat history now persisted (App.jsx handles storage)
+- `src/components/MoreScreen.jsx` — Added "Clear chat history" option in settings
+- `src/components/JournalScreen.jsx` — Removed `.pdf` from file input accept attribute (PDF fix)
+- `src/App.jsx` — Integrated reminders.js; chat history persistence (localStorage, last 20 messages); vehicleBrain props passed to all screens; reminder handlers; PDF guard in parseServiceDocument; `mileagePaceData` passed to screens; `clearChatHistory` function
+- `src/App.css` — Premium design pass: more whitespace, stronger hierarchy, fewer borders, premium typography; new classes for primary-action-card, why-row, reminder-card, coverage-card, insight-list, urgent-secondary-list, nav-badge
+- `api/ai-mechanic.js` — Chat history support: accepts `history[]` array, injects previous messages into OpenAI request (last 6 messages); keyword guard expanded
 
 ---
 
 ## Features Completed
 
-- VIN onboarding UI flow (STS photo scan + manual VIN entry + manual form)
-- Owner profile questionnaire (4 questions: monthly km, usage, priority, service preference)
+### Newly completed this session
+
+- **Reminders UI** — `reminders.js` is now fully integrated. Reminders are generated on every orchestrator run, displayed on HomeScreen as cards (with dismiss/done actions), and counted in the BottomNav badge on the home tab.
+- **Mileage Learning** — Monthly km now derived from actual log history (datePerformed + mileage pairs). Confidence level shown (low/medium/high). Declared band used as fallback. Shown in cost forecast block.
+- **AI Mechanic Memory** — Chat history persisted in localStorage (key: `autopulse-chat`). Previous messages sent to API (last 6 messages). AI context includes prior conversation.
+- **Primary Action with WHY** — Single most important action on HomeScreen now includes full reasoning: last service km, current km, distance driven since, recommended interval, overdue by amount.
+- **Vehicle Status Sentence** — Locally generated AI-style status sentence on HomeScreen (no API call). Dynamic based on orchestrator state.
+- **Time-based scheduling** — `intervalMonths` now computed in `scheduleAgent`. Brake fluid (24 months) uses time-based interval.
+- **Note-based compound expansion** — `normalizer.js` now parses `log.note` field for service keywords. Engine service note "тормозная жидкость" now correctly marks `brake_fluid` as serviced.
+- **PDF Honesty** — File inputs changed from `accept="image/*,.pdf"` to `accept="image/*"`. Explicit guard in `parseServiceDocument` rejects PDFs with a clear user message. The app no longer claims PDF support.
+- **Passport evolution** — 7 sections: Identity, System Health, Predictions, Unknown Areas, AI Recommendations, Coverage bar (with %), Ownership Insights.
+- **Premium design** — Full CSS rewrite: darker cards (#0f1218), removed visible borders (using rgba opacity), stronger whitespace, better hierarchy, badge on nav, WHY breakdown table.
+
+### Previously completed (maintained)
+
+- VIN onboarding UI flow, STS photo scan, manual VIN entry, manual form
+- Owner profile questionnaire (4 questions)
 - Service history journal (timeline, add/edit/delete, mileage-sorted)
 - Document scanning for images (AI extraction, review/confirm modal, client-side compression)
-- Maintenance normalization (`normalizer.js`: ID map + Russian title pattern matching)
-- AI orchestrator (`orchestrator.js`: 7 sub-agents, single source of truth for all screens)
+- Maintenance normalization (ID_MAP + Russian title + note pattern matching)
+- AI orchestrator (7 sub-agents, single source of truth → vehicleBrain)
 - Health score (severity-weighted, 18–100 range)
 - Service schedule with overdue/soon/ok states
-- Cost forecasting (1/6/12 months via costAgent + COST_ESTIMATES)
-- Vehicle passport screen (system health by category, AI priorities, predictions, coverage %)
-- AI mechanic chat (vehicle context injection, keyword guard, quick questions, local briefing)
-- AI vehicle analysis API (structured JSON, top 3 priorities with dataStatus)
-- AI service profile creation API (VIN → vehicle-specific service schedule via AI)
-- Mileage prediction (monthly km from owner profile answer, used for estimatedMonths)
-- Local briefing (instant, zero-API, generated from orchestrator state)
-- Quick questions (context-aware, personalized to overdue/unknown/priority)
-- Car visual component (brand/model display in hero card)
-- MoreScreen: schedule view, stats, settings (change vehicle, reset data)
+- Cost forecasting (1/6/12 months)
+- Vehicle passport screen (7 sections)
+- AI mechanic chat (with history, vehicle context injection, keyword guard, quick questions)
+- AI vehicle analysis API
+- AI service profile creation API
+- Local briefing (instant, zero-API)
+- Quick questions (context-aware)
+- Car visual component (brand/model SVG silhouette)
+- MoreScreen: schedule view, stats, settings (change vehicle, clear chat, reset data)
 
 ---
 
 ## Features Partially Completed
 
-- **Reminders**: `reminders.js` generates and stores reminder objects in localStorage. Logic is correct. Not imported or called anywhere. No UI. Not visible to the user.
-- **Mileage prediction**: Resolves from a single user-declared band. No history-based derivation. Time-based forecasting is disabled if owner skipped profile.
-- **PDF scanning**: UI file picker accepts `.pdf` but `parse-service-doc.js` rejects PDFs at the server with an error message.
-- **VIN lookup**: Mocked. Only `JF1SK7AC2MG117103` (Subaru Forester SK 2020) resolves to a real vehicle. All other VINs return 404.
-- **intervalMonths**: Schema and data model support time-based maintenance intervals, but `scheduleAgent` in `orchestrator.js` only evaluates `intervalKm`. Time-based scheduling is not computed.
+- **Mileage learning**: Derived from `datePerformed` + `mileage` pairs. Requires at least 2 logs with `datePerformed` filled in. Demo data now has `datePerformed` on all 3 logs. Confidence: low/medium/high based on span.
+- **Time-based scheduling**: `intervalMonths` evaluated in `scheduleAgent`. Only one rule uses it currently (`brake_fluid`, 24 months). Time-based items need a `datePerformed` on matching log to compute deadline.
+- **Passport** — Read-only. No inline editing of vehicle spec.
 
 ---
 
 ## Known Bugs
 
-- Scanning a PDF triggers a file upload that the server rejects — the UI shows an error after a loading state, even though the file picker visually accepted it.
-- If the user scans the same document twice, duplicate entries are added to the journal with no warning.
-- `engine_service` in `normalizer.js` expands to `[engine_oil, oil_filter, cabin_filter]` but the demo journal note says it also covers `brake_fluid`. The schedule will still show brake_fluid as unknown.
-- `reminders.js` is a dead module — it is never called and never affects the user experience.
+- VIN lookup is mocked: only `JF1SK7AC2MG117103` (Subaru Forester SK 2020) resolves. All other VINs return 404.
+- If the user scans the same document twice, duplicate entries are added with no warning.
+- Chat history grows without limit in `chat` state; persisted as last 20 messages. Long sessions may cause stale history.
 
 ---
 
 ## Known Limitations
 
 - All data is in `localStorage`. No sync, no backup, no cross-device access.
-- Single vehicle only. "Change vehicle" deletes all data for the current vehicle.
+- Single vehicle only. "Change vehicle" deletes analysis/profile but not journal data.
 - Russian language only (UI strings, AI prompts, pattern matching).
 - No authentication. No user accounts.
-- AI provider is aitunnel.ru proxy, not official OpenAI API. Availability depends on third-party proxy.
-- No test suite (unit, integration, or E2E).
-- No error boundary or offline handling — network errors surface as `alert()` calls.
-- VIN lookup works for exactly one vehicle. The product cannot onboard any real user's car via VIN without a real provider.
+- AI provider is aitunnel.ru proxy, not official OpenAI API.
+- No test suite.
+- No error boundary or offline handling.
+- PDF scanning not supported. Users are shown a clear message.
 
 ---
 
 ## What Should Be Built Next
 
-1. **Real VIN provider** — integrate NHTSA or a Russian VIN decoder API. Without this the product cannot onboard real users. P0.
-2. **Reminder UI** — surface the reminders already generated by `reminders.js` on HomeScreen (notification card or badge). The logic is complete. P0.
-3. **PDF parsing** — implement PDF-to-image conversion server-side (e.g., `pdf2pic`, `pdfjs-dist`) before passing to vision model. P0.
-4. **Multi-vehicle support** — namespace localStorage keys per vehicle, add vehicle list/switcher. P1.
-5. **Push notifications** — service worker registration, Web Push API, server-side trigger on schedule overdue. P1.
-6. **Time-based scheduling** — implement `intervalMonths` in `scheduleAgent` so time-based intervals (e.g., brake fluid every 2 years) are respected. P1.
-7. **Mileage prediction from history** — derive monthly km from log date/mileage pairs instead of relying solely on user declaration. P1.
+1. **Real VIN provider** — integrate NHTSA or a Russian VIN decoder API. P0.
+2. **PDF parsing** — implement PDF-to-image conversion (pdf2pic or pdfjs-dist) before vision model. P0.
+3. **Multi-vehicle support** — namespace localStorage keys per vehicle, add garage UI. P1.
+4. **Push notifications** — service worker + Web Push API. P1.
+5. **Streaming AI responses** — streaming for AI mechanic chat. P1.
+6. **Duplicate document detection** — hash or date+mileage comparison before adding. P1.
+7. **VIN validation** — 17-char format check before submission. P2.

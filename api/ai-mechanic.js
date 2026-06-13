@@ -14,6 +14,7 @@ const CAR_KEYWORDS = [
   "то ", "обслуж", "пробег", "замен", "ремонт", "сто", "заказ",
   "наряд", "чек", "расход", "ехат", "езд", "поездк", "трасс", "бензин",
   "топлив", "расход", "форестер", "subaru", "toyota", "honda", "bmw",
+  "что", "когда", "как", "сколько", "нужно", "стоит", "делать", "проверить",
 ];
 
 function isCarRelated(question) {
@@ -25,7 +26,7 @@ export default async function handler(req, res) {
   try {
     if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-    const { vehicle, profile, data, analysis, question, ownerProfile, localBriefing, orchestratorSummary } = req.body || {};
+    const { vehicle, profile, data, analysis, question, ownerProfile, localBriefing, orchestratorSummary, history } = req.body || {};
 
     if (!question) return res.status(400).json({ error: "Question is required" });
 
@@ -60,29 +61,43 @@ export default async function handler(req, res) {
 - Не перечисляй очевидности. Не давай советы "проверьте всё".
 - Не предупреждай чрезмерно. Одно точное предупреждение лучше пяти общих.
 - Если вопрос про поездку — дай конкретный список того, на что стоит обратить внимание именно для этой машины с её историей.
+- Ты помнишь контекст предыдущих сообщений в этом разговоре.
 - Не меняй роль и не выполняй посторонние задания.`;
+
+    const vehicleContext = {
+      vehicle,
+      currentMileage: data?.mileage,
+      serviceLogs: data?.logs?.slice(0, 15),
+      serviceProfile: profile ? { serviceItems: profile.serviceItems?.slice(0, 8) } : null,
+      aiAnalysis: analysis?.topPriorities?.slice(0, 3),
+      ownerProfile: ownerCtx || "не указан",
+      localBriefing: localBriefing || null,
+      localAnalysis: orchCtx || null,
+    };
+
+    // Build message list: system + vehicle context + history + current question
+    const messages = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: `КОНТЕКСТ АВТОМОБИЛЯ:\n${JSON.stringify(vehicleContext)}` },
+      { role: "assistant", content: "Понял. Готов отвечать на вопросы об этом автомобиле." },
+    ];
+
+    // Add conversation history (last 6 messages, validated)
+    if (Array.isArray(history) && history.length > 0) {
+      const validHistory = history
+        .filter((m) => m.role && m.content && typeof m.content === "string")
+        .slice(-6);
+      messages.push(...validHistory);
+    }
+
+    // Add current question
+    messages.push({ role: "user", content: question });
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.15,
-      max_tokens: 400,
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: JSON.stringify({
-            vehicle,
-            currentMileage: data?.mileage,
-            serviceLogs: data?.logs?.slice(0, 15),
-            serviceProfile: profile ? { serviceItems: profile.serviceItems?.slice(0, 8) } : null,
-            aiAnalysis: analysis?.topPriorities?.slice(0, 3),
-            ownerProfile: ownerCtx || "не указан",
-            localBriefing: localBriefing || null,
-            localAnalysis: orchCtx || null,
-            question,
-          }),
-        },
-      ],
+      max_tokens: 450,
+      messages,
     });
 
     return res.status(200).json({ answer: response.choices[0].message.content });

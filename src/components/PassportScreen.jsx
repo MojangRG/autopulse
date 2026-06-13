@@ -2,11 +2,11 @@ function km(v) { return Number(v || 0).toLocaleString("ru-RU") + " км"; }
 function rub(v) { return Number(v || 0).toLocaleString("ru-RU") + " ₽"; }
 
 const SYSTEMS = [
-  { id: "engine",     name: "Двигатель",        icon: "⚙️",  ruleIds: ["engine_oil", "oil_filter", "air_filter", "spark_plugs"] },
-  { id: "drivetrain", name: "Трансмиссия",       icon: "🔄",  ruleIds: ["cvt_fluid", "diff_fluid"] },
-  { id: "brakes",     name: "Тормоза",           icon: "🔴",  ruleIds: ["brake_fluid", "front_pads", "front_discs", "rear_pads", "rear_discs"] },
-  { id: "fuel",       name: "Топливная система", icon: "⛽",  ruleIds: ["fuel_cleaning"] },
-  { id: "suspension", name: "Подвеска",          icon: "🔩",  ruleIds: ["suspension_check"] },
+  { id: "engine",     name: "Двигатель",        ruleIds: ["engine_oil", "oil_filter", "air_filter", "spark_plugs"] },
+  { id: "drivetrain", name: "Трансмиссия",       ruleIds: ["cvt_fluid", "diff_fluid"] },
+  { id: "brakes",     name: "Тормоза",           ruleIds: ["brake_fluid", "front_pads", "front_discs", "rear_pads", "rear_discs"] },
+  { id: "fuel",       name: "Топливная система", ruleIds: ["fuel_cleaning"] },
+  { id: "suspension", name: "Подвеска",          ruleIds: ["suspension_check"] },
 ];
 
 function systemHealth(ruleIds, schedule) {
@@ -15,7 +15,7 @@ function systemHealth(ruleIds, schedule) {
   const overdue = items.filter((i) => i.status === "Просрочено");
   const soon = items.filter((i) => i.status === "Скоро");
   const withHistory = items.filter((i) => i.lastMileage > 0);
-  if (overdue.length) return { status: "due", label: "Просрочено", detail: `${overdue[0].name}` };
+  if (overdue.length) return { status: "due", label: "Просрочено", detail: overdue[0].name };
   if (soon.length) {
     const n = soon.sort((a, b) => a.left - b.left)[0];
     return { status: "watch", label: "Скоро", detail: `${n.name} — ${n.left.toLocaleString("ru-RU")} км` };
@@ -29,8 +29,7 @@ function systemHealth(ruleIds, schedule) {
 
 function coveragePercent(schedule) {
   if (!schedule.length) return 0;
-  const known = schedule.filter((s) => s.lastMileage > 0).length;
-  return Math.round((known / schedule.length) * 100);
+  return Math.round((schedule.filter((s) => s.lastMileage > 0).length / schedule.length) * 100);
 }
 
 export default function PassportScreen({
@@ -44,6 +43,8 @@ export default function PassportScreen({
   healthScore,
   costForecast,
   mileagePace,
+  mileagePaceData,
+  insights,
 }) {
   const coverage = coveragePercent(schedule);
   const gaps = schedule.filter((i) => i.lastMileage === 0);
@@ -66,7 +67,7 @@ export default function PassportScreen({
       <h2 className="screen-title">Паспорт</h2>
       <div className="passport">
 
-        {/* Identity */}
+        {/* A. Identity */}
         <div className="passport-id-card">
           <div className="passport-id-glow" />
           <div className="passport-label-tag">AutoPulse · Vehicle Passport</div>
@@ -79,13 +80,14 @@ export default function PassportScreen({
             <span className="passport-chip neutral">{coverage}% истории</span>
             {overdue.length > 0 && <span className="passport-chip overdue">{overdue.length} просрочено</span>}
             {soon.length > 0 && <span className="passport-chip soon">{soon.length} скоро</span>}
+            {overdue.length === 0 && soon.length === 0 && <span className="passport-chip ok">В норме</span>}
           </div>
         </div>
 
         {/* Overview stats */}
         <div className="passport-stats-row">
           <div className="passport-stat">
-            <div className="passport-stat-value">{healthScore}%</div>
+            <div className={`passport-stat-value health-${healthScore >= 80 ? "good" : healthScore >= 55 ? "warn" : "bad"}`}>{healthScore}%</div>
             <div className="passport-stat-label">Состояние</div>
           </div>
           <div className="passport-stat">
@@ -93,40 +95,18 @@ export default function PassportScreen({
             <div className="passport-stat-label">Записей</div>
           </div>
           <div className="passport-stat">
-            <div className="passport-stat-value" style={{ color: "#10b981" }}>{totalSpent > 0 ? rub(totalSpent) : "—"}</div>
+            <div className="passport-stat-value green">{totalSpent > 0 ? rub(totalSpent) : "—"}</div>
             <div className="passport-stat-label">Потрачено</div>
           </div>
         </div>
 
-        {/* Cost forecast (if pace known) */}
-        {mileagePace > 0 && (costForecast.next6Months > 0 || costForecast.nextYear > 0) && (
-          <>
-            <div className="passport-section-title">Прогноз расходов</div>
-            <div className="cost-grid" style={{ marginBottom: 16 }}>
-              <div className="cost-col">
-                <div className="cost-period">Месяц</div>
-                <div className="cost-value">{costForecast.nextMonth > 0 ? rub(costForecast.nextMonth) : "—"}</div>
-              </div>
-              <div className="cost-col">
-                <div className="cost-period">6 месяцев</div>
-                <div className="cost-value">{costForecast.next6Months > 0 ? rub(costForecast.next6Months) : "—"}</div>
-              </div>
-              <div className="cost-col">
-                <div className="cost-period">Год</div>
-                <div className="cost-value">{costForecast.nextYear > 0 ? rub(costForecast.nextYear) : "—"}</div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* System health */}
+        {/* B. Vehicle Health — System status */}
         <div className="passport-section-title">Состояние систем</div>
         <div className="system-list">
           {SYSTEMS.map((sys) => {
             const h = systemHealth(sys.ruleIds, schedule);
             return (
               <div className="system-row" key={sys.id}>
-                <span className="system-icon">{sys.icon}</span>
                 <div className="system-info">
                   <div className="system-name">{sys.name}</div>
                   <div className="system-detail">{h.detail}</div>
@@ -137,7 +117,40 @@ export default function PassportScreen({
           })}
         </div>
 
-        {/* AI recommendations */}
+        {/* C. Predictions */}
+        {predictions?.length > 0 && (
+          <>
+            <div className="passport-section-title">Прогноз</div>
+            <div className="passport-prediction-list">
+              {predictions.map((p) => (
+                <div className="passport-pred-item" key={p.id}>
+                  <span className={`passport-pred-dot ${p.type}`} />
+                  <span className="passport-pred-text">{p.text}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* D. Unknown Areas */}
+        {gaps.length > 0 && (
+          <>
+            <div className="passport-section-title">Неизвестные зоны</div>
+            <div className="gap-list">
+              {gaps.map((item) => (
+                <div className="gap-row" key={item.id}>
+                  <span className="gap-circle" />
+                  <span className="gap-text">{item.name}</span>
+                  <span className={`gap-badge ${item.severity}`}>
+                    {item.severity === "high" ? "критично" : "нет данных"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* E. AI Recommendations */}
         {analysis?.topPriorities?.length > 0 && (
           <>
             <div className="passport-section-title">Рекомендации AI</div>
@@ -165,31 +178,54 @@ export default function PassportScreen({
           </>
         )}
 
-        {/* Predictions */}
-        {predictions?.length > 0 && (
+        {/* F. Service History Coverage */}
+        <div className="passport-section-title">Покрытие истории</div>
+        <div className="coverage-card">
+          <div className="coverage-bar-wrap">
+            <div className="coverage-bar-fill" style={{ width: `${coverage}%` }} />
+          </div>
+          <div className="coverage-row">
+            <span className="coverage-label">{coverage}% регламентных позиций подтверждено</span>
+            <span className="coverage-count">{schedule.filter(s => s.lastMileage > 0).length}/{schedule.length}</span>
+          </div>
+          {gaps.length > 0 && (
+            <div className="coverage-missing">
+              Нет данных: {gaps.slice(0, 3).map(g => g.name).join(", ")}
+              {gaps.length > 3 && ` и ещё ${gaps.length - 3}`}
+            </div>
+          )}
+        </div>
+
+        {/* Cost forecast */}
+        {mileagePace > 0 && (costForecast?.next6Months > 0 || costForecast?.nextYear > 0) && (
           <>
-            <div className="passport-section-title">Прогноз</div>
-            <div className="passport-prediction-list">
-              {predictions.map((p) => (
-                <div className="passport-pred-item" key={p.id}>
-                  <span className={`passport-pred-dot ${p.type}`} />
-                  <span className="passport-pred-text">{p.text}</span>
-                </div>
-              ))}
+            <div className="passport-section-title">Прогноз расходов</div>
+            <div className="cost-grid" style={{ marginBottom: 16 }}>
+              <div className="cost-col">
+                <div className="cost-period">Месяц</div>
+                <div className="cost-value">{costForecast.nextMonth > 0 ? rub(costForecast.nextMonth) : "—"}</div>
+              </div>
+              <div className="cost-col">
+                <div className="cost-period">6 месяцев</div>
+                <div className="cost-value">{costForecast.next6Months > 0 ? rub(costForecast.next6Months) : "—"}</div>
+              </div>
+              <div className="cost-col">
+                <div className="cost-period">Год</div>
+                <div className="cost-value">{costForecast.nextYear > 0 ? rub(costForecast.nextYear) : "—"}</div>
+              </div>
             </div>
           </>
         )}
 
-        {/* Unknown areas */}
-        {gaps.length > 0 && (
+        {/* G. Ownership Insights */}
+        {insights?.length > 0 && (
           <>
-            <div className="passport-section-title">Неизвестные зоны</div>
-            <div className="gap-list">
-              {gaps.map((item) => (
-                <div className="gap-row" key={item.id}>
-                  <span className="gap-circle" />
-                  <span className="gap-text">{item.name}</span>
-                  <span className="gap-badge">{item.severity === "high" ? "критично" : "нет данных"}</span>
+            <div className="passport-section-title">Аналитика владения</div>
+            <div className="insight-list">
+              {insights.map((ins, i) => (
+                <div className="insight-row" key={i}>
+                  <span className={`insight-dot ${ins.type}`} />
+                  <span className="insight-text">{ins.text}</span>
                 </div>
               ))}
             </div>
@@ -206,6 +242,7 @@ export default function PassportScreen({
             </div>
           ))}
         </div>
+
       </div>
     </>
   );

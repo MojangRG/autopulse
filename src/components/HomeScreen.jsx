@@ -9,17 +9,73 @@ function healthColor(score) {
   return "bad";
 }
 
-function urgentIcon(item) {
-  if (item.status === "Просрочено") return "●";
-  if (item.severity === "high") return "◆";
-  return "▲";
-}
+function PrimaryActionCard({ action, mileage, onScan, isParsingDoc }) {
+  if (!action) return null;
 
-function urgentLabel(item) {
-  if (item.status === "Просрочено") {
-    return `Просрочено на ${Math.abs(item.left).toLocaleString("ru-RU")} км`;
-  }
-  return `Через ~${item.left.toLocaleString("ru-RU")} км`;
+  const isOverdue = action.type === "overdue";
+  const isUpcoming = action.type === "upcoming";
+  const isScan = action.type === "scan";
+  const color = isOverdue ? "high" : isUpcoming ? "medium" : "low";
+  const tagLabel = isOverdue ? "Требует обслуживания" : isUpcoming ? "Скоро потребуется" : "Рекомендация";
+
+  return (
+    <div className={`primary-action-card sev-${color}`}>
+      <div className="primary-action-tag">{tagLabel}</div>
+      <div className="primary-action-title">{action.title}</div>
+
+      {(isOverdue || isUpcoming) && action.why && (
+        <div className="primary-action-why">
+          {action.why.lastKm != null && (
+            <div className="why-row">
+              <span className="why-key">Последняя замена</span>
+              <span className="why-val">{km(action.why.lastKm)}</span>
+            </div>
+          )}
+          {action.why.currentKm > 0 && (
+            <div className="why-row">
+              <span className="why-key">Текущий пробег</span>
+              <span className="why-val">{km(action.why.currentKm)}</span>
+            </div>
+          )}
+          {action.why.drivenSince != null && action.why.drivenSince > 0 && (
+            <div className="why-row">
+              <span className="why-key">Пройдено с замены</span>
+              <span className="why-val">{km(action.why.drivenSince)}</span>
+            </div>
+          )}
+          {action.why.interval && (
+            <div className="why-row">
+              <span className="why-key">Интервал замены</span>
+              <span className="why-val">{km(action.why.interval)}</span>
+            </div>
+          )}
+          {action.why.overdueBy != null && (
+            <div className="why-row overdue-row">
+              <span className="why-key">Просрочено на</span>
+              <span className="why-val why-overdue">{km(action.why.overdueBy)}</span>
+            </div>
+          )}
+          {action.why.kmLeft != null && (
+            <div className="why-row">
+              <span className="why-key">До обслуживания</span>
+              <span className="why-val">~{km(action.why.kmLeft)}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isScan && action.why?.reason && (
+        <div className="primary-action-reason">{action.why.reason}</div>
+      )}
+
+      {isScan && (
+        <label className={`primary-action-scan-btn${isParsingDoc ? " loading" : ""}`}>
+          {isParsingDoc ? "Читаю документ..." : "Отсканировать документ"}
+          <input type="file" accept="image/*" onChange={onScan} hidden disabled={isParsingDoc} />
+        </label>
+      )}
+    </div>
+  );
 }
 
 export default function HomeScreen({
@@ -34,19 +90,24 @@ export default function HomeScreen({
   costForecast,
   lastService,
   mileagePace,
+  mileagePaceData,
+  statusSentence,
+  primaryAction,
+  reminders,
   isParsingDoc,
   onScan,
   onManualAdd,
-  onOpenManualForLog,
+  onReminderDismiss,
+  onReminderDone,
 }) {
-  const topUrgent = urgentActions?.[0];
-  const moreUrgentCount = (urgentActions?.length || 0) - 1;
   const hc = healthColor(healthScore);
+  const topReminder = reminders?.find((r) => r.status === "active");
+  const moreUrgentCount = (urgentActions?.length || 0) - 1;
 
   return (
     <div className="home-screen">
 
-      {/* Hero */}
+      {/* Vehicle hero */}
       <div className="hero-card">
         <div className="hero-glow" />
         <CarVisual vehicle={vehicle} />
@@ -79,38 +140,53 @@ export default function HomeScreen({
         </div>
       </div>
 
-      {/* Urgent action */}
-      {topUrgent ? (
-        <div className={`urgent-card sev-${topUrgent.severity} ${topUrgent.status === "Просрочено" ? "overdue" : "soon"}`}>
-          <div className="urgent-header">
-            <span className="urgent-icon-dot" />
-            <span className="urgent-heading">
-              {topUrgent.status === "Просрочено" ? "Требует обслуживания" : "Скоро потребуется"}
-            </span>
-            {moreUrgentCount > 0 && (
-              <span className="urgent-more">+{moreUrgentCount}</span>
-            )}
+      {/* AI status sentence */}
+      {statusSentence && (
+        <div className="status-sentence">{statusSentence}</div>
+      )}
+
+      {/* Reminder card */}
+      {topReminder && (
+        <div className={`reminder-card ${topReminder.priority}`}>
+          <div className="reminder-title">{topReminder.title}</div>
+          <div className="reminder-msg">{topReminder.message}</div>
+          <div className="reminder-actions">
+            <button className="reminder-btn-done" onClick={() => onReminderDone(topReminder.id)}>
+              Выполнено
+            </button>
+            <button className="reminder-btn-dismiss" onClick={() => onReminderDismiss(topReminder.id)}>✕</button>
           </div>
-          <div className="urgent-name">{topUrgent.name}</div>
-          <div className="urgent-detail">
-            {topUrgent.lastMileage > 0
-              ? `Последняя запись: ${km(topUrgent.lastMileage)}`
-              : "Нет данных в истории"}
-            {" · "}{urgentLabel(topUrgent)}
-          </div>
-          {moreUrgentCount > 0 && (
-            <div className="urgent-rest">
-              {urgentActions.slice(1).map((u) => (
-                <div className="urgent-rest-item" key={u.id || u.name}>
-                  <span className={`urgent-rest-dot sev-${u.severity}`} />
-                  <span>{u.name}</span>
-                  <span className="urgent-rest-km">{urgentLabel(u)}</span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
-      ) : (
+      )}
+
+      {/* Single primary action with WHY */}
+      <PrimaryActionCard
+        action={primaryAction}
+        mileage={mileage}
+        onScan={onScan}
+        isParsingDoc={isParsingDoc}
+      />
+
+      {/* Additional urgent items (compact) */}
+      {urgentActions?.length > 1 && (
+        <div className="urgent-secondary-list">
+          <div className="urgent-secondary-label">Также требует внимания</div>
+          {urgentActions.slice(1, 4).map((u) => (
+            <div className="urgent-secondary-row" key={u.id || u.name}>
+              <span className={`urgent-rest-dot sev-${u.severity}`} />
+              <span className="urgent-secondary-name">{u.name}</span>
+              <span className="urgent-secondary-km">
+                {u.status === "Просрочено"
+                  ? `Просрочено ${km(Math.abs(u.left))}`
+                  : `Через ~${km(u.left)}`}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* All good state */}
+      {!primaryAction && urgentActions?.length === 0 && (
         <div className="status-ok-card">
           <span className="status-ok-dot" />
           <span className="status-ok-text">Всё в норме</span>
@@ -124,8 +200,8 @@ export default function HomeScreen({
           {upcomingItems.slice(0, 3).map((item) => (
             <div className="upcoming-row" key={item.id || item.name}>
               <span className="upcoming-name">{item.name}</span>
-              <span className="upcoming-km">~{item.left.toLocaleString("ru-RU")} км</span>
-              {item.estimatedMonths && (
+              <span className="upcoming-km">~{km(item.left)}</span>
+              {item.estimatedMonths > 0 && (
                 <span className="upcoming-months">~{item.estimatedMonths} мес</span>
               )}
             </div>
@@ -134,7 +210,7 @@ export default function HomeScreen({
       )}
 
       {/* Cost forecast */}
-      {mileagePace > 0 && (
+      {mileagePace > 0 && (costForecast?.next6Months > 0 || costForecast?.nextYear > 0) && (
         <div className="section-block">
           <div className="section-label">Прогноз расходов</div>
           <div className="cost-grid">
@@ -151,15 +227,21 @@ export default function HomeScreen({
               <div className="cost-value">{costForecast.nextYear > 0 ? rub(costForecast.nextYear) : "—"}</div>
             </div>
           </div>
+          {mileagePaceData?.source === "history" && (
+            <div className="pace-source">
+              Темп {mileagePace.toLocaleString("ru-RU")} км/мес
+              {mileagePaceData.confidence === "high" ? " · высокая точность" : mileagePaceData.confidence === "medium" ? " · средняя точность" : " · низкая точность"}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Last service */}
+      {/* Last known event */}
       {lastService && (
-        <div className="last-service-row">
-          <span className="last-service-label">Последнее</span>
-          <span className="last-service-title">{lastService.title}</span>
-          <span className="last-service-km">{km(lastService.mileage)}</span>
+        <div className="last-event-card">
+          <div className="last-event-label">Последнее подтверждённое событие</div>
+          <div className="last-event-title">{lastService.title}</div>
+          <div className="last-event-km">{km(lastService.mileage)}</div>
         </div>
       )}
 
@@ -168,7 +250,7 @@ export default function HomeScreen({
         <label className={`scan-btn${isParsingDoc ? " loading" : ""}`}>
           <span className="scan-btn-icon">📷</span>
           {isParsingDoc ? "Читаю документ..." : "Отсканировать документ"}
-          <input type="file" accept="image/*,.pdf" onChange={onScan} hidden disabled={isParsingDoc} />
+          <input type="file" accept="image/*" onChange={onScan} hidden disabled={isParsingDoc} />
         </label>
         <button className="btn btn-gray" onClick={onManualAdd}>✏️ Добавить вручную</button>
       </div>

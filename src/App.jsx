@@ -7,6 +7,7 @@ import AiScreen from "./components/AiScreen";
 import MoreScreen from "./components/MoreScreen";
 import OnboardingProfile from "./components/OnboardingProfile";
 import { computeOrchestratorState } from "./utils/orchestrator.js";
+import { generateReminders, dismissReminder, doneReminder, getActiveReminders } from "./utils/reminders.js";
 import "./App.css";
 
 const WORK_OPTIONS = [
@@ -36,17 +37,19 @@ const DEFAULT_RULES = [
   { id: "spark_plugs",  name: "Свечи зажигания",    intervalKm: 100000,warningBeforeKm: 10000, severity: "medium", notes: "Контроль к 95-100 тыс. км." },
   { id: "cvt_fluid",    name: "Масло CVT",          intervalKm: 60000, warningBeforeKm: 10000, severity: "high",   notes: "Критичный узел для ресурса вариатора." },
   { id: "diff_fluid",   name: "Масло редукторов",   intervalKm: 60000, warningBeforeKm: 10000, severity: "medium", notes: "Передний и задний редукторы." },
-  { id: "brake_fluid",  name: "Тормозная жидкость", intervalKm: 40000, warningBeforeKm: 5000,  severity: "high",   notes: "Также контролировать по сроку 2 года." },
+  { id: "brake_fluid",  name: "Тормозная жидкость", intervalKm: 40000, warningBeforeKm: 5000,  severity: "high",   intervalMonths: 24, notes: "Также контролировать по сроку 2 года." },
 ];
 
 const defaultData = {
   mileage: 86000,
   logs: [
-    { id: 1, normalizedId: "engine_service", title: "ТО двигателя",                      mileage: 82000, cost: 0, datePerformed: "", dateAdded: "2026-06-12", note: "Масло, масляный фильтр, салонный фильтр, тормозная жидкость", source: "manual" },
-    { id: 2, normalizedId: "fuel_cleaning",  title: "Чистка топливной системы",           mileage: 72000, cost: 0, datePerformed: "", dateAdded: "2026-06-12", note: "", source: "manual" },
-    { id: 3, normalizedId: "front_discs",    title: "Передние тормозные диски и колодки", mileage: 68000, cost: 0, datePerformed: "", dateAdded: "2026-06-12", note: "", source: "manual" },
+    { id: 1, normalizedId: "engine_service", title: "ТО двигателя",                      mileage: 82000, cost: 0, datePerformed: "2025-10-15", dateAdded: "2026-06-12", note: "Масло, масляный фильтр, салонный фильтр, тормозная жидкость", source: "manual" },
+    { id: 2, normalizedId: "fuel_cleaning",  title: "Чистка топливной системы",           mileage: 72000, cost: 0, datePerformed: "2024-09-20", dateAdded: "2026-06-12", note: "", source: "manual" },
+    { id: 3, normalizedId: "front_discs",    title: "Передние тормозные диски и колодки", mileage: 68000, cost: 0, datePerformed: "2024-03-10", dateAdded: "2026-06-12", note: "", source: "manual" },
   ],
 };
+
+const CHAT_KEY = "autopulse-chat";
 
 function todayIso() { return new Date().toISOString().slice(0, 10); }
 
@@ -83,6 +86,10 @@ export default function App() {
   const [ownerProfile, setOwnerProfile] = useState(() => JSON.parse(localStorage.getItem("autopulse-owner-profile") || "null"));
   const [data, setData]             = useState(() => JSON.parse(localStorage.getItem("autopulse-data") || "null") || defaultData);
   const [newMileage, setNewMileage] = useState(data.mileage);
+  const [reminders, setReminders]   = useState(() => getActiveReminders());
+  const [chat, setChat]             = useState(() => {
+    try { return JSON.parse(localStorage.getItem(CHAT_KEY) || "[]"); } catch { return []; }
+  });
 
   const [vehicleForm, setVehicleForm] = useState({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", mileage: 86000 });
   const [manualOpen, setManualOpen]   = useState(false);
@@ -93,7 +100,6 @@ export default function App() {
   const [profileOnboardingOpen, setProfileOnboardingOpen] = useState(false);
 
   const [question, setQuestion] = useState("");
-  const [chat, setChat]         = useState([]);
 
   const [isDetecting, setIsDetecting]     = useState(false);
   const [isAnalyzing, setIsAnalyzing]     = useState(false);
@@ -103,13 +109,24 @@ export default function App() {
 
   useEffect(() => { localStorage.setItem("autopulse-data", JSON.stringify(data)); }, [data]);
   useEffect(() => { if (vehicle) localStorage.setItem("autopulse-vehicle", JSON.stringify(vehicle)); }, [vehicle]);
+  useEffect(() => {
+    const limited = chat.slice(-20); // Keep last 20 messages
+    localStorage.setItem(CHAT_KEY, JSON.stringify(limited));
+  }, [chat]);
 
-  // ── Orchestrator — single source of truth ────────────────────────────────
+  // ── Orchestrator — single source of truth (vehicleBrain) ─────────────────
   const orch = useMemo(() => computeOrchestratorState({
     vehicle, profile, data, ownerProfile, analysis, defaultRules: DEFAULT_RULES,
   }), [vehicle, profile, data, ownerProfile, analysis]);
 
-  // ── API: analyze vehicle ─────────────────────────────────────────────────
+  // ── Reminders — regenerate when schedule changes ──────────────────────────
+  useEffect(() => {
+    if (!vehicle) return;
+    const updated = generateReminders({ schedule: orch.schedule, data, ownerProfile });
+    setReminders(updated.filter((r) => r.status === "active"));
+  }, [orch.schedule, data, ownerProfile, vehicle]);
+
+  // ── API: analyze vehicle ──────────────────────────────────────────────────
   async function analyzeVehicle(customData = data, customProfile = profile, customVehicle = vehicle) {
     if (!customVehicle || !customProfile || !customData) return;
     try {
@@ -133,7 +150,7 @@ export default function App() {
     finally { setIsAnalyzing(false); }
   }
 
-  // ── API: create vehicle profile ──────────────────────────────────────────
+  // ── API: create vehicle profile ───────────────────────────────────────────
   async function detectVehicleByVin() {
     const vin = vehicleForm.vin.trim().toUpperCase();
     if (!vin) return alert("Введите VIN");
@@ -158,7 +175,7 @@ export default function App() {
     finally { setIsDetecting(false); }
   }
 
-  // ── API: parse STS photo ─────────────────────────────────────────────────
+  // ── API: parse STS photo ──────────────────────────────────────────────────
   async function parseStsPhoto(event) {
     const originalFile = event.target.files?.[0];
     if (!originalFile) return;
@@ -186,11 +203,15 @@ export default function App() {
     finally { setIsParsingSts(false); event.target.value = ""; }
   }
 
-  // ── API: parse service document ──────────────────────────────────────────
+  // ── API: parse service document ───────────────────────────────────────────
   async function parseServiceDocument(event) {
     const originalFile = event.target.files?.[0];
     if (!originalFile) return;
     if (!vehicle) return alert("Сначала добавьте автомобиль");
+    // PDF is not supported — only images
+    if (originalFile.type === "application/pdf" || originalFile.name.toLowerCase().endsWith(".pdf")) {
+      return alert("PDF-файлы пока не поддерживаются. Пожалуйста, сделайте фото документа.");
+    }
     try {
       setIsParsingDoc(true);
       const file = await compressImage(originalFile);
@@ -223,13 +244,22 @@ export default function App() {
     finally { setIsParsingDoc(false); event.target.value = ""; }
   }
 
-  // ── API: AI mechanic chat ────────────────────────────────────────────────
+  // ── API: AI mechanic chat (with history) ──────────────────────────────────
   async function askAi(forcedQuestion) {
     const q = forcedQuestion ?? question;
     if (!q?.trim()) return;
     setQuestion("");
     setIsAsking(true);
-    setChat((prev) => [...prev, { role: "user", text: q }, { role: "ai", text: "Думаю..." }]);
+    const userMsg = { role: "user", text: q };
+    const thinkingMsg = { role: "ai", text: "Думаю..." };
+    setChat((prev) => [...prev, userMsg, thinkingMsg]);
+
+    // Build history for API (last 6 messages, excluding current thinking placeholder)
+    const historyForApi = chat.slice(-6).map((m) => ({
+      role: m.role === "ai" ? "assistant" : "user",
+      content: m.text,
+    }));
+
     try {
       const response = await fetch("/api/ai-mechanic", {
         method: "POST",
@@ -238,6 +268,7 @@ export default function App() {
           vehicle, profile, data, analysis, question: q,
           ownerProfile,
           localBriefing: orch.localBriefing,
+          history: historyForApi,
           orchestratorSummary: {
             healthScore: orch.healthScore,
             urgentActions: orch.urgentActions.slice(0, 3).map((i) => ({ name: i.name, status: i.status, left: i.left })),
@@ -254,7 +285,18 @@ export default function App() {
     } finally { setIsAsking(false); }
   }
 
-  // ── Local mutations ──────────────────────────────────────────────────────
+  // ── Reminder handlers ─────────────────────────────────────────────────────
+  function handleReminderDismiss(id) {
+    const updated = dismissReminder(id);
+    setReminders(updated.filter((r) => r.status === "active"));
+  }
+
+  function handleReminderDone(id) {
+    const updated = doneReminder(id);
+    setReminders(updated.filter((r) => r.status === "active"));
+  }
+
+  // ── Local mutations ───────────────────────────────────────────────────────
   function updateVehicleField(field, value) { setVehicleForm((prev) => ({ ...prev, [field]: value })); }
 
   function saveOwnerProfile(profileData) {
@@ -343,9 +385,9 @@ export default function App() {
 
   function resetData() {
     if (!confirm("Сбросить данные AutoPulse?")) return;
-    ["autopulse-data","autopulse-vehicle","autopulse-profile","autopulse-analysis","autopulse-owner-profile","autopulse-reminders"].forEach((k) => localStorage.removeItem(k));
+    ["autopulse-data","autopulse-vehicle","autopulse-profile","autopulse-analysis","autopulse-owner-profile","autopulse-reminders", CHAT_KEY].forEach((k) => localStorage.removeItem(k));
     setVehicle(null); setProfile(null); setAnalysis(null); setOwnerProfile(null);
-    setData(defaultData); setNewMileage(defaultData.mileage); setChat([]);
+    setData(defaultData); setNewMileage(defaultData.mileage); setChat([]); setReminders([]);
     setVehicleForm({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", mileage: 86000 });
     setTab("home");
   }
@@ -357,7 +399,12 @@ export default function App() {
     setTab("home");
   }
 
-  // ── Onboarding (no vehicle yet) ──────────────────────────────────────────
+  function clearChatHistory() {
+    setChat([]);
+    localStorage.removeItem(CHAT_KEY);
+  }
+
+  // ── Onboarding (no vehicle yet) ───────────────────────────────────────────
   if (!vehicle) {
     return (
       <div className="app">
@@ -394,7 +441,7 @@ export default function App() {
     );
   }
 
-  // ── Main app ─────────────────────────────────────────────────────────────
+  // ── Main app ──────────────────────────────────────────────────────────────
   return (
     <div className="app">
       <div className="topbar">
@@ -493,9 +540,15 @@ export default function App() {
           costForecast={orch.costForecast}
           lastService={orch.lastService}
           mileagePace={orch.mileagePace}
+          mileagePaceData={orch.mileagePaceData}
+          statusSentence={orch.statusSentence}
+          primaryAction={orch.primaryAction}
+          reminders={reminders}
           isParsingDoc={isParsingDoc}
           onScan={parseServiceDocument}
           onManualAdd={() => openManualForm()}
+          onReminderDismiss={handleReminderDismiss}
+          onReminderDone={handleReminderDone}
         />
       )}
       {tab === "journal" && (
@@ -520,6 +573,8 @@ export default function App() {
           healthScore={orch.healthScore}
           costForecast={orch.costForecast}
           mileagePace={orch.mileagePace}
+          mileagePaceData={orch.mileagePaceData}
+          insights={orch.insights}
         />
       )}
       {tab === "ai" && (
@@ -545,10 +600,12 @@ export default function App() {
           onReset={resetData}
           vehicle={vehicle}
           onChangeVehicle={changeVehicle}
+          onClearChat={clearChatHistory}
+          chatCount={chat.length}
         />
       )}
 
-      <BottomNav tab={tab} setTab={setTab} />
+      <BottomNav tab={tab} setTab={setTab} reminderCount={reminders.length} />
     </div>
   );
 }

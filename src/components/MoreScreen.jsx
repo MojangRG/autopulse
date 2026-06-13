@@ -5,7 +5,7 @@ function rub(v) { return Number(v || 0).toLocaleString("ru-RU") + " ₽"; }
 
 const STATUS_LABEL = { "Просрочено": "overdue", "Скоро": "soon", "Норма": "ok" };
 
-export default function MoreScreen({ serviceRules, schedule, data, totalSpent, onReset, vehicle, onChangeVehicle }) {
+export default function MoreScreen({ serviceRules, schedule, data, totalSpent, onReset, vehicle, onChangeVehicle, onClearChat, chatCount }) {
   const [section, setSection] = useState("schedule");
 
   return (
@@ -84,6 +84,11 @@ export default function MoreScreen({ serviceRules, schedule, data, totalSpent, o
           <button className="btn btn-gray" onClick={onChangeVehicle} style={{ marginBottom: "10px" }}>
             Сменить автомобиль
           </button>
+          {chatCount > 0 && (
+            <button className="btn btn-gray" onClick={onClearChat} style={{ marginBottom: "10px" }}>
+              Очистить историю чата ({chatCount} сообщений)
+            </button>
+          )}
           <button className="btn btn-red" onClick={onReset}>
             Сбросить все данные
           </button>
