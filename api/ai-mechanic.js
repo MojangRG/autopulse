@@ -25,7 +25,7 @@ export default async function handler(req, res) {
   try {
     if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-    const { vehicle, profile, data, analysis, question, ownerProfile, predictions } = req.body || {};
+    const { vehicle, profile, data, analysis, question, ownerProfile, localBriefing, orchestratorSummary } = req.body || {};
 
     if (!question) return res.status(400).json({ error: "Question is required" });
 
@@ -45,8 +45,8 @@ export default async function handler(req, res) {
       ownerProfile.service && `Сервис: ${ownerProfile.service}`,
     ].filter(Boolean).join(", ") : null;
 
-    const predCtx = predictions?.length
-      ? predictions.map((p) => `- ${p.text}`).join("\n")
+    const orchCtx = orchestratorSummary
+      ? `Здоровье: ${orchestratorSummary.healthScore}%. Просрочено: ${orchestratorSummary.urgentActions?.map((i) => i.name).join(", ") || "нет"}. Неизвестно (критично): ${orchestratorSummary.unknownAreas?.join(", ") || "нет"}.`
       : null;
 
     const systemPrompt = `Ты AI-механик AutoPulse. Помогаешь владельцу конкретного автомобиля с вопросами по обслуживанию и эксплуатации.
@@ -77,7 +77,8 @@ export default async function handler(req, res) {
             serviceProfile: profile ? { serviceItems: profile.serviceItems?.slice(0, 8) } : null,
             aiAnalysis: analysis?.topPriorities?.slice(0, 3),
             ownerProfile: ownerCtx || "не указан",
-            predictions: predCtx || "нет",
+            localBriefing: localBriefing || null,
+            localAnalysis: orchCtx || null,
             question,
           }),
         },

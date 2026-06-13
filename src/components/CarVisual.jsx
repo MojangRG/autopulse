@@ -1,7 +1,3 @@
-// TODO: Connect real AI image generation here.
-// If vehicle.imageUrl is set, show that image instead of the SVG silhouette.
-// Suggested integration point: pass imageUrl to an <img> tag and fall back to SVG.
-
 const BRAND_COLORS = {
   subaru:    "#0057B8",
   toyota:    "#EB0A1E",
@@ -44,8 +40,6 @@ function hexToRgba(hex, alpha) {
 }
 
 export default function CarVisual({ vehicle }) {
-  // TODO: if (vehicle?.imageUrl) return <img src={vehicle.imageUrl} className="car-real-img" alt={vehicle.model} />;
-
   const color = getBrandColor(vehicle);
   const type = getBodyType(vehicle);
   const isSuv = type === "suv";
