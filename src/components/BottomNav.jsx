@@ -1,23 +1,24 @@
 export default function BottomNav({ tab, setTab }) {
   const items = [
-    ["home", "🏠", "Главная"],
-    ["journal", "📋", "Журнал"],
-    ["ai", "🤖", "AI"],
-    ["more", "☰", "Ещё"],
+    ["home",     "🏠", "Главная"],
+    ["journal",  "📋", "История"],
+    ["passport", "📄", "Паспорт"],
+    ["ai",       "🤖", "AI"],
+    ["more",     "⚙️", "Ещё"],
   ];
 
   return (
-    <div className="bottom-nav">
+    <nav className="bottom-nav">
       {items.map(([id, icon, label]) => (
         <button
           key={id}
-          className={tab === id ? "nav-active" : ""}
+          className={`nav-btn${tab === id ? " active" : ""}`}
           onClick={() => setTab(id)}
         >
-          <span>{icon}</span>
-          <small>{label}</small>
+          <span className="nav-btn-icon">{icon}</span>
+          <span className="nav-btn-label">{label}</span>
         </button>
       ))}
-    </div>
+    </nav>
   );
 }
