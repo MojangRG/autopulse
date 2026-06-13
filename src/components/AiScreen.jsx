@@ -1,4 +1,4 @@
-export default function AiScreen({ chat, question, setQuestion, isAsking, onAsk, vehicle }) {
+export default function AiScreen({ chat, question, setQuestion, isAsking, onAsk, vehicle, ownerProfile }) {
   function handleKey(e) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -6,13 +6,20 @@ export default function AiScreen({ chat, question, setQuestion, isAsking, onAsk,
     }
   }
 
+  const contextParts = [
+    vehicle && `${vehicle.brand} ${vehicle.model} ${vehicle.year || ""}`,
+    vehicle?.engine,
+    ownerProfile?.monthlyKm && `${ownerProfile.monthlyKm}/мес`,
+    ownerProfile?.usage,
+  ].filter(Boolean);
+
   return (
     <div className="ai-screen">
       <h2 className="screen-title">AI-механик</h2>
 
       {vehicle && (
         <div className="chat-context-bar">
-          Контекст: <span>{vehicle.brand} {vehicle.model} {vehicle.year}{vehicle.engine ? ` · ${vehicle.engine}` : ""}</span>
+          <span>{contextParts.join(" · ")}</span>
         </div>
       )}
 
@@ -20,8 +27,8 @@ export default function AiScreen({ chat, question, setQuestion, isAsking, onAsk,
         {chat.length === 0 && (
           <div className="chat-empty">
             Задайте любой вопрос про ваш автомобиль.<br />
-            «Еду на 3000 км, что проверить?»<br />
-            «Слышу гул при торможении — что это?»
+            <span style={{ color: "#4b5563" }}>«Еду на 3000 км, что проверить?»</span><br />
+            <span style={{ color: "#4b5563" }}>«Слышу гул при торможении — что это?»</span>
           </div>
         )}
         {chat.map((msg, i) => (

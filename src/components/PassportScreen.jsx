@@ -1,11 +1,12 @@
 function km(v) { return Number(v || 0).toLocaleString("ru-RU") + " км"; }
+function rub(v) { return Number(v || 0).toLocaleString("ru-RU") + " ₽"; }
 
 const SYSTEMS = [
-  { id: "engine",     name: "Двигатель",         icon: "⚙️",  ruleIds: ["engine_oil", "oil_filter", "air_filter", "spark_plugs"] },
-  { id: "drivetrain", name: "Трансмиссия",        icon: "🔄",  ruleIds: ["cvt_fluid", "diff_fluid"] },
-  { id: "brakes",     name: "Тормоза",            icon: "🔴",  ruleIds: ["brake_fluid", "front_pads", "front_discs", "rear_pads", "rear_discs"] },
-  { id: "fuel",       name: "Топливная система",  icon: "⛽",  ruleIds: ["fuel_cleaning"] },
-  { id: "suspension", name: "Подвеска",           icon: "🔩",  ruleIds: ["suspension_check"] },
+  { id: "engine",     name: "Двигатель",        icon: "⚙️",  ruleIds: ["engine_oil", "oil_filter", "air_filter", "spark_plugs"] },
+  { id: "drivetrain", name: "Трансмиссия",       icon: "🔄",  ruleIds: ["cvt_fluid", "diff_fluid"] },
+  { id: "brakes",     name: "Тормоза",           icon: "🔴",  ruleIds: ["brake_fluid", "front_pads", "front_discs", "rear_pads", "rear_discs"] },
+  { id: "fuel",       name: "Топливная система", icon: "⛽",  ruleIds: ["fuel_cleaning"] },
+  { id: "suspension", name: "Подвеска",          icon: "🔩",  ruleIds: ["suspension_check"] },
 ];
 
 function getSystemHealth(ruleIds, schedule) {
@@ -30,7 +31,7 @@ function getSystemHealth(ruleIds, schedule) {
   return { status: "unknown", detail: "Нет записей в журнале", label: "Нет данных" };
 }
 
-export default function PassportScreen({ vehicle, schedule, analysis, serviceRules }) {
+export default function PassportScreen({ vehicle, schedule, analysis, serviceRules, predictions, totalSpent, logs }) {
   const gaps = schedule.filter((item) => item.lastMileage === 0);
 
   const vehicleFields = [
@@ -43,6 +44,10 @@ export default function PassportScreen({ vehicle, schedule, analysis, serviceRul
     ["Привод", vehicle.drive],
     ["Рынок", vehicle.market],
   ].filter(([, v]) => v);
+
+  const confirmedCount = schedule.filter((s) => s.lastMileage > 0 && s.status === "Норма").length;
+  const overdueCount = schedule.filter((s) => s.status === "Просрочено").length;
+  const soonCount = schedule.filter((s) => s.status === "Скоро").length;
 
   return (
     <>
@@ -58,11 +63,36 @@ export default function PassportScreen({ vehicle, schedule, analysis, serviceRul
           )}
           <div className="passport-car-name">{vehicle.brand} {vehicle.model}</div>
           <div className="passport-car-spec">
-            {[vehicle.year, vehicle.engine, vehicle.transmission, vehicle.drive]
-              .filter(Boolean)
-              .join(" · ")}
+            {[vehicle.year, vehicle.engine, vehicle.transmission, vehicle.drive].filter(Boolean).join(" · ")}
+          </div>
+
+          {/* Quick status chips */}
+          <div className="passport-status-chips">
+            {overdueCount > 0 && (
+              <span className="passport-chip overdue">{overdueCount} просрочено</span>
+            )}
+            {soonCount > 0 && (
+              <span className="passport-chip soon">{soonCount} скоро</span>
+            )}
+            {confirmedCount > 0 && (
+              <span className="passport-chip ok">{confirmedCount} в норме</span>
+            )}
           </div>
         </div>
+
+        {/* Spend + history summary */}
+        {(totalSpent > 0 || (logs?.length > 0)) && (
+          <div className="passport-spend-row">
+            <div>
+              <div className="passport-spend-label">Всего потрачено</div>
+              <div className="passport-spend-value">{rub(totalSpent)}</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div className="passport-spend-label">Записей</div>
+              <div className="passport-spend-value" style={{ color: "#6b7280" }}>{logs?.length || 0}</div>
+            </div>
+          </div>
+        )}
 
         {/* Health by system */}
         <div className="passport-section-title">Состояние систем</div>
@@ -82,7 +112,7 @@ export default function PassportScreen({ vehicle, schedule, analysis, serviceRul
           })}
         </div>
 
-        {/* AI priorities */}
+        {/* AI recommendations */}
         {analysis?.topPriorities?.length > 0 && (
           <>
             <div className="passport-section-title">Рекомендации AI</div>
@@ -91,13 +121,33 @@ export default function PassportScreen({ vehicle, schedule, analysis, serviceRul
                 <div className="ai-priority-row" key={i}>
                   <div className="ai-priority-row-title">{p.title}</div>
                   <div className="ai-priority-row-action">{p.action}</div>
+                  {/* Marketplace placeholder */}
+                  <div className="market-actions" style={{ marginTop: 8 }}>
+                    <button className="market-btn coming-soon" disabled>Узнать стоимость</button>
+                    <button className="market-btn coming-soon" disabled>Записаться</button>
+                  </div>
                 </div>
               ))}
             </div>
           </>
         )}
 
-        {/* Gaps — never-serviced items */}
+        {/* Predictions */}
+        {predictions && predictions.length > 0 && (
+          <>
+            <div className="passport-section-title">Прогноз</div>
+            <div className="passport-prediction-list">
+              {predictions.map((p) => (
+                <div className="passport-pred-item" key={p.id}>
+                  <span className={`passport-pred-dot ${p.type}`} />
+                  <span className="passport-pred-text">{p.text}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Gaps */}
         {gaps.length > 0 && (
           <>
             <div className="passport-section-title">Нет записей</div>
@@ -106,6 +156,7 @@ export default function PassportScreen({ vehicle, schedule, analysis, serviceRul
                 <div className="gap-row" key={item.id}>
                   <span className="gap-circle" />
                   <span className="gap-text">{item.name}</span>
+                  <span className="gap-badge">нет данных</span>
                 </div>
               ))}
             </div>

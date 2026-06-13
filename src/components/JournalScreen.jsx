@@ -1,8 +1,25 @@
-function km(v) { return Number(v || 0).toLocaleString("ru-RU") + " км"; }
-function rub(v) { return Number(v || 0).toLocaleString("ru-RU") + " ₽"; }
-function isScannedLog(log) {
+function km(v) { return Number(v || 0).toLocaleString("ru-RU") + " км"; }
+function rub(v) { return Number(v || 0).toLocaleString("ru-RU") + " ₽"; }
+
+function getSource(log) {
   const note = String(log.note || "").toLowerCase();
-  return note.includes("документ") || note.includes("распознано") || note.includes("сканировано");
+  if (log.source === "scanned") return "scanned";
+  if (note.includes("документ") || note.includes("распознано") || note.includes("сканировано")) return "scanned";
+  return "manual";
+}
+
+function getChangeTags(log) {
+  const tags = [];
+  if (log.mileageUpdated) tags.push("Пробег обновлён");
+  if (log.scheduleReset) tags.push("Интервал сброшен");
+  return tags;
+}
+
+function showNote(log) {
+  const n = String(log.note || "");
+  if (!n) return false;
+  if (n === "Добавлено из документа СТО" || n === "Добавлено из документа" || n === "Распознано из документа") return false;
+  return true;
 }
 
 export default function JournalScreen({ logs, isParsingDoc, onScan, onManualAdd, onEdit, onDelete }) {
@@ -34,14 +51,12 @@ export default function JournalScreen({ logs, isParsingDoc, onScan, onManualAdd,
       ) : (
         <div className="timeline">
           {sorted.map((log, index) => {
-            const scanned = isScannedLog(log);
-            const showNote = log.note
-              && log.note !== "Добавлено из документа СТО"
-              && log.note !== "Добавлено из документа";
+            const source = getSource(log);
+            const changeTags = getChangeTags(log);
             return (
               <div className="tl-item" key={log.id}>
                 <div className="tl-left">
-                  <div className={`tl-dot${scanned ? " scanned" : ""}`} />
+                  <div className={`tl-dot${source === "scanned" ? " scanned" : ""}`} />
                   {index < sorted.length - 1 && <div className="tl-line" />}
                 </div>
                 <div className="tl-content">
@@ -50,13 +65,24 @@ export default function JournalScreen({ logs, isParsingDoc, onScan, onManualAdd,
                     <span className="tl-date">{log.datePerformed || log.dateAdded || "—"}</span>
                   </div>
                   <div className="tl-title">{log.title}</div>
-                  {showNote && <div className="tl-note">{log.note}</div>}
+                  {showNote(log) && (
+                    <div className="tl-note">{log.note}</div>
+                  )}
+                  {changeTags.length > 0 && (
+                    <div className="tl-changes">
+                      {changeTags.map((t) => (
+                        <span className="tl-change-tag" key={t}>{t}</span>
+                      ))}
+                    </div>
+                  )}
                   <div className="tl-footer">
-                    <div style={{ display: "flex", gap: "7px", alignItems: "center", flexWrap: "wrap" }}>
+                    <div className="tl-footer-left">
                       {Number(log.cost) > 0 && (
                         <span className="tl-cost">{rub(log.cost)}</span>
                       )}
-                      {scanned && <span className="tl-source">📷 сканировано</span>}
+                      <span className={`tl-source-badge ${source}`}>
+                        {source === "scanned" ? "📷 сканировано" : "✏️ вручную"}
+                      </span>
                     </div>
                     <div className="tl-actions">
                       <button className="tl-btn" onClick={() => onEdit(log)}>✏️</button>
