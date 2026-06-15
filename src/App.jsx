@@ -53,6 +53,20 @@ const CHAT_KEY = "autopulse-chat";
 
 function todayIso() { return new Date().toISOString().slice(0, 10); }
 
+function logFingerprint(log) {
+  return [
+    String(log.normalizedId || "").trim().toLowerCase(),
+    String(log.title || "").trim().toLowerCase(),
+    String(log.mileage || ""),
+    String(log.datePerformed || ""),
+  ].join("|");
+}
+
+function isDuplicateLog(log, existingLogs = [], ignoreId = null) {
+  const fp = logFingerprint(log);
+  return existingLogs.some((item) => item.id !== ignoreId && logFingerprint(item) === fp);
+}
+
 function compressImage(file, maxWidth = 1400, quality = 0.72) {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith("image/")) return resolve(file);
@@ -198,7 +212,7 @@ export default function App() {
         transmission: result.vehicle?.transmission || prev.transmission,
         drive: result.vehicle?.drive || prev.drive,
       }));
-      alert("СТС распознано. Проверьте VIN и нажмите «Добавить по VIN».");
+      // STS data is now placed into the onboarding form. The user can continue by VIN or manual confirmation.
     } catch (error) { alert("Ошибка распознавания СТС: " + error.message); }
     finally { setIsParsingSts(false); event.target.value = ""; }
   }
@@ -347,6 +361,9 @@ export default function App() {
       note: workDraft.note || "",
       source: "manual",
     };
+    if (isDuplicateLog(log, data.logs, editingLogId)) {
+      return alert("Такая запись уже есть в журнале");
+    }
     const nextLogs = editingLogId ? data.logs.map((i) => i.id === editingLogId ? log : i) : [log, ...data.logs];
     const maxMileage = Math.max(data.mileage, ...nextLogs.map((i) => Number(i.mileage || 0)));
     const nextData = { ...data, mileage: maxMileage, logs: nextLogs };
@@ -367,7 +384,16 @@ export default function App() {
       source: "scanned",
     }));
     const maxMileage = Math.max(data.mileage, pendingDocMileage || 0, ...normalized.map((l) => Number(l.mileage || 0)));
-    const nextData = { ...data, mileage: maxMileage, logs: [...normalized, ...data.logs] };
+    const uniqueLogs = normalized.filter((log, index, list) => {
+      const duplicateInJournal = isDuplicateLog(log, data.logs);
+      const duplicateInBatch = list.findIndex((item) => logFingerprint(item) === logFingerprint(log)) !== index;
+      return !duplicateInJournal && !duplicateInBatch;
+    });
+    if (!uniqueLogs.length) {
+      alert("Все распознанные записи уже есть в журнале");
+      return;
+    }
+    const nextData = { ...data, mileage: maxMileage, logs: [...uniqueLogs, ...data.logs] };
     setData(nextData); setNewMileage(maxMileage); setWorkDraft((p) => ({ ...p, mileage: maxMileage }));
     setPendingLogs([]); setPendingDocMileage(null); setTab("journal");
     setTimeout(() => analyzeVehicle(nextData, profile, vehicle), 300);

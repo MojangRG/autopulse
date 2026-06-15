@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { CANONICAL_SERVICE_IDS } from "../src/utils/serviceIds.js";
 
 function getOpenAI() {
   if (!process.env.OPENAI_API_KEY) {
@@ -79,7 +80,7 @@ const serviceProfileSchema = {
         type: "object",
         additionalProperties: false,
         properties: {
-          id: { type: "string" },
+          id: { type: "string", enum: CANONICAL_SERVICE_IDS },
           name: { type: "string" },
           category: { type: "string" },
           intervalKm: { type: ["number", "null"] },
@@ -88,6 +89,7 @@ const serviceProfileSchema = {
           severity: { type: "string", enum: ["low", "medium", "high"] },
           confidence: { type: "string", enum: ["low", "medium", "high"] },
           notes: { type: "string" },
+          aliases: { type: "array", items: { type: "string" } },
         },
         required: [
           "id",
@@ -99,6 +101,7 @@ const serviceProfileSchema = {
           "severity",
           "confidence",
           "notes",
+          "aliases",
         ],
       },
     },
@@ -109,7 +112,7 @@ const serviceProfileSchema = {
         type: "object",
         additionalProperties: false,
         properties: {
-          id: { type: "string" },
+          id: { type: "string", enum: CANONICAL_SERVICE_IDS },
           name: { type: "string" },
           riskMileageFrom: { type: ["number", "null"] },
           riskMileageTo: { type: ["number", "null"] },
@@ -164,7 +167,7 @@ export default async function handler(req, res) {
         {
           role: "system",
           content:
-            "Ты автомобильный сервисный инженер AutoPulse. Создай не общие советы, а техническую сервисную карту конкретного автомобиля. Работай строго по автомобилю, двигателю, коробке, приводу, году и пробегу. Запрещено писать универсальные советы вроде 'проходите ТО', 'следите за маслом', 'проверяйте тормоза' без привязки к машине. serviceItems должны быть именно регламентными позициями. commonIssues должны быть типовыми рисками именно для данной модели/поколения/двигателя/коробки. recommendations — ровно 3 коротких вывода, актуальных на текущем пробеге. Если уверенность низкая, ставь confidence low и объясняй, что нужно подтвердить документами. Не выдумывай точные факты, если не уверен.",
+            `Ты автомобильный сервисный инженер AutoPulse. Создай не общие советы, а техническую сервисную карту конкретного автомобиля. Работай строго по автомобилю, двигателю, коробке, приводу, году и пробегу. Запрещено писать универсальные советы вроде 'проходите ТО', 'следите за маслом', 'проверяйте тормоза' без привязки к машине. serviceItems должны быть именно регламентными позициями. В поле id разрешены только canonical service IDs из списка: ${CANONICAL_SERVICE_IDS.join(", ")}. commonIssues должны быть типовыми рисками именно для данной модели/поколения/двигателя/коробки. recommendations — ровно 3 коротких вывода, актуальных на текущем пробеге. Если уверенность низкая, ставь confidence low и объясняй, что нужно подтвердить документами. Не выдумывай точные факты, если не уверен.`,
         },
         {
           role: "user",
@@ -174,7 +177,10 @@ export default async function handler(req, res) {
             currentMileage: Number(mileage || 0),
             region: "RU",
             language: "ru",
+            allowedServiceItemIds: CANONICAL_SERVICE_IDS,
             outputRules: [
+              "serviceItems[].id must be one of allowedServiceItemIds exactly",
+              "do not invent custom service item ids",
               "recommendations must contain exactly 3 important points",
               "avoid generic advice",
               "focus on concrete mileage-based maintenance",

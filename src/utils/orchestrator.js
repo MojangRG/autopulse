@@ -1,7 +1,7 @@
 // AI Orchestrator — unified intelligence layer.
 // All screens derive their state from here. No logic should be duplicated elsewhere.
 
-import { logMatchesRule } from "./normalizer.js";
+import { logMatchesRule, normalizeRuleId } from "./normalizer.js";
 import { resolveMonthlyKm } from "./predictions.js";
 
 export const COST_ESTIMATES = {
@@ -50,17 +50,23 @@ function learnMileagePace(data, declaredMonthlyKm) {
 function scheduleAgent(serviceRules, data) {
   const currentMileage = Number(data?.mileage || 0);
   return serviceRules
-    .filter((r) => r.intervalKm)
+    .map((rawRule) => {
+      const ruleId = normalizeRuleId(rawRule);
+      return { ...rawRule, id: ruleId, canonicalId: ruleId };
+    })
+    .filter((r) => r.intervalKm || r.intervalMonths)
     .map((rule) => {
       const matchedLogs = (data?.logs || []).filter((log) => logMatchesRule(log, rule.id));
       const lastMileage = matchedLogs.length
         ? Math.max(...matchedLogs.map((l) => Number(l.mileage || 0)))
         : 0;
-      const nextMileage = lastMileage + Number(rule.intervalKm);
-      const left = nextMileage - currentMileage;
+      const intervalKm = Number(rule.intervalKm || 0);
+      const nextMileage = intervalKm > 0 && lastMileage > 0 ? lastMileage + intervalKm : null;
+      const left = nextMileage != null ? nextMileage - currentMileage : null;
       let status = "Норма";
-      if (left <= 0) status = "Просрочено";
-      else if (left <= Number(rule.warningBeforeKm || 2000)) status = "Скоро";
+      if (lastMileage === 0) status = "Нет данных";
+      else if (left != null && left <= 0) status = "Просрочено";
+      else if (left != null && left <= Number(rule.warningBeforeKm || 2000)) status = "Скоро";
       // Time-based override: if intervalMonths defined and we have a date, compute deadline
       let timeStatus = null;
       if (rule.intervalMonths && matchedLogs.length > 0) {
@@ -79,7 +85,7 @@ function scheduleAgent(serviceRules, data) {
       const finalStatus = (timeStatus === "Просрочено" && status !== "Просрочено") ? "Просрочено"
         : (timeStatus === "Скоро" && status === "Норма") ? "Скоро"
         : status;
-      return { ...rule, lastMileage, nextMileage, left, status: finalStatus };
+      return { ...rule, lastMileage, nextMileage: nextMileage || 0, left: left ?? 0, status: finalStatus };
     });
 }
 
@@ -103,6 +109,7 @@ function costAgent(schedule, monthlyKm) {
   let nextMonth = 0, next6Months = 0, nextYear = 0;
   for (const item of schedule) {
     const cost = COST_ESTIMATES[item.id] || COST_ESTIMATES.other;
+    if (item.status === "Нет данных") continue;
     if (item.status === "Просрочено") {
       nextMonth += cost; next6Months += cost; nextYear += cost;
       continue;
@@ -138,6 +145,7 @@ function predictionAgent(schedule, monthlyKm) {
       result.push({ id: `gap-${item.id}`, type: "unknown-history", severity: item.severity, text: `${item.name}: нет записей за всё время.`, itemId: item.id, itemName: item.name });
       continue;
     }
+    if (item.status === "Нет данных") continue;
     if (item.status === "Просрочено") {
       result.push({ id: `overdue-${item.id}`, type: "overdue", severity: "high", text: `${item.name} — просрочено на ${Math.abs(item.left).toLocaleString("ru-RU")} км.`, itemId: item.id, itemName: item.name, kmLeft: item.left });
       continue;
@@ -399,7 +407,7 @@ export function computeOrchestratorState({ vehicle, profile, data, ownerProfile,
   const statusSentence = generateStatusSentence(vehicle, schedule, data, monthlyKm);
 
   const urgentActions = [...schedule]
-    .filter((i) => i.status !== "Норма")
+    .filter((i) => i.status === "Просрочено" || i.status === "Скоро")
     .sort((a, b) => {
       const so = { Просрочено: 0, Скоро: 1 };
       const bySt = (so[a.status] ?? 2) - (so[b.status] ?? 2);
@@ -418,7 +426,7 @@ export function computeOrchestratorState({ vehicle, profile, data, ownerProfile,
         .sort((a, b) => a.left - b.left)
         .slice(0, 3);
 
-  const unknownAreas = schedule.filter((i) => i.lastMileage === 0);
+  const unknownAreas = schedule.filter((i) => i.lastMileage === 0 || i.status === "Нет данных");
   const primaryAction = primaryActionAgent(schedule, urgentActions, unknownAreas, data, data?.mileage);
   const insights = ownershipInsights(schedule, data, totalSpent, vehicle);
 

@@ -18,7 +18,7 @@ export default function BottomNav({ tab, setTab, reminderCount = 0 }) {
           <span className="nav-btn-icon-wrap">
             <span className="nav-btn-icon">{icon}</span>
             {id === "home" && reminderCount > 0 && (
-              <span className="nav-badge">{reminderCount > 9 ? "9+" : reminderCount}</span>
+              <span className="nav-badge">{reminderCount > 3 ? "3+" : reminderCount}</span>
             )}
           </span>
           <span className="nav-btn-label">{label}</span>

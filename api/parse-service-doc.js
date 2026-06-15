@@ -1,6 +1,7 @@
 import fs from "fs";
 import formidable from "formidable";
 import OpenAI from "openai";
+import { canonicalServiceId, CANONICAL_SERVICE_IDS, SERVICE_IDS } from "../src/utils/serviceIds.js";
 
 export const config = { api: { bodyParser: false } };
 
@@ -77,11 +78,7 @@ export default async function handler(req, res) {
               text: JSON.stringify({
                 vehicle,
                 currentMileage: mileage,
-                allowedNormalizedIds: [
-                  "engine_service","engine_oil","oil_filter","cabin_filter","air_filter",
-                  "spark_plugs","cvt_fluid","diff_fluid","brake_fluid","front_pads",
-                  "front_discs","rear_pads","rear_discs","fuel_cleaning","suspension_check","other",
-                ],
+                allowedNormalizedIds: CANONICAL_SERVICE_IDS,
                 outputFormat: `{
   "logs": [
     {
@@ -109,7 +106,7 @@ export default async function handler(req, res) {
     const parsed = JSON.parse(response.choices[0].message.content || "{}");
     const logs = Array.isArray(parsed.logs)
       ? parsed.logs.map((log) => ({
-          normalizedId: log.normalizedId || "other",
+          normalizedId: CANONICAL_SERVICE_IDS.includes(canonicalServiceId(log.normalizedId)) ? canonicalServiceId(log.normalizedId) : SERVICE_IDS.OTHER,
           title: log.title || "Работа из документа",
           mileage: Number(log.mileage || mileage || 0),
           cost: Number(log.cost || 0),
