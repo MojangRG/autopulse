@@ -125,7 +125,10 @@ export default function HomeScreen({
             <div className="hero-render-badge ready">AI render</div>
           )}
           {vehicleRender?.status === "error" && (
-            <div className="hero-render-badge error">Рендер не создан</div>
+            <div className="hero-render-badge error" title={vehicleRender.error || ""}>
+              Рендер не создан
+              {vehicleRender.error && <span className="hero-render-error-text">{vehicleRender.error}</span>}
+            </div>
           )}
           <div className="hero-brand">{vehicle.brand}</div>
           <div className="hero-model">{vehicle.model}</div>

@@ -1,5 +1,7 @@
 import OpenAI from "openai";
 
+export const config = { maxDuration: 60 };
+
 function getOpenAI() {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is missing");
@@ -7,12 +9,31 @@ function getOpenAI() {
 
   return new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
-    baseURL: "https://api.aitunnel.ru/v1",
+    baseURL: "https://api.aitunnel.ru/v1/",
   });
 }
 
 function safeText(value, fallback = "") {
   return String(value || fallback).trim();
+}
+
+function extractImageUrl(result) {
+  const first = result?.data?.[0] || {};
+  if (first.url) return first.url;
+  if (first.b64_json) return `data:image/png;base64,${first.b64_json}`;
+  if (first.image_url?.url) return first.image_url.url;
+  if (typeof first.image_url === "string") return first.image_url;
+  return null;
+}
+
+async function generateImage(openai, prompt, model) {
+  return openai.images.generate({
+    model,
+    prompt,
+    n: 1,
+    size: "1024x1024",
+    quality: process.env.IMAGE_QUALITY || "low",
+  });
 }
 
 function buildRenderPrompt(vehicle) {
@@ -57,24 +78,38 @@ export default async function handler(req, res) {
     const openai = getOpenAI();
     const prompt = buildRenderPrompt(vehicle);
 
-    const result = await openai.images.generate({
-      model: "gpt-image-1",
-      prompt,
-      size: "1024x1024",
-    });
+    const preferredModel = process.env.IMAGE_MODEL || "gpt-image-1";
+    const fallbackModel = preferredModel === "openai/gpt-image-1" ? "gpt-image-1" : "openai/gpt-image-1";
 
-    const first = result?.data?.[0];
-    const imageUrl = first?.b64_json
-      ? `data:image/png;base64,${first.b64_json}`
-      : first?.url || null;
+    let usedModel = preferredModel;
+    let result;
+    try {
+      result = await generateImage(openai, prompt, preferredModel);
+    } catch (firstError) {
+      console.warn("Primary image model failed, retrying with fallback", {
+        preferredModel,
+        fallbackModel,
+        error: firstError?.message || String(firstError),
+      });
+      usedModel = fallbackModel;
+      result = await generateImage(openai, prompt, fallbackModel);
+    }
+
+    const imageUrl = extractImageUrl(result);
 
     if (!imageUrl) {
-      throw new Error("Image generation returned no image");
+      return res.status(502).json({
+        error: "Image generation returned no image",
+        details: `AITUNNEL response did not contain url or b64_json. data[0] keys: ${Object.keys(result?.data?.[0] || {}).join(", ") || "none"}`,
+        model: usedModel,
+      });
     }
 
     return res.status(200).json({
       imageUrl,
       prompt,
+      model: usedModel,
+      quality: process.env.IMAGE_QUALITY || "low",
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {

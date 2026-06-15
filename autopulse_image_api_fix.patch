@@ -1,0 +1,151 @@
+--- a/api/generate-car-render.js
++++ b/api/generate-car-render.js
+@@ -1,5 +1,7 @@
+ import OpenAI from "openai";
+ 
++export const config = { maxDuration: 60 };
++
+ function getOpenAI() {
+   if (!process.env.OPENAI_API_KEY) {
+     throw new Error("OPENAI_API_KEY is missing");
+@@ -7,7 +9,7 @@
+ 
+   return new OpenAI({
+     apiKey: process.env.OPENAI_API_KEY,
+-    baseURL: "https://api.aitunnel.ru/v1",
++    baseURL: "https://api.aitunnel.ru/v1/",
+   });
+ }
+ 
+@@ -15,6 +17,25 @@
+   return String(value || fallback).trim();
+ }
+ 
++function extractImageUrl(result) {
++  const first = result?.data?.[0] || {};
++  if (first.url) return first.url;
++  if (first.b64_json) return `data:image/png;base64,${first.b64_json}`;
++  if (first.image_url?.url) return first.image_url.url;
++  if (typeof first.image_url === "string") return first.image_url;
++  return null;
++}
++
++async function generateImage(openai, prompt, model) {
++  return openai.images.generate({
++    model,
++    prompt,
++    n: 1,
++    size: "1024x1024",
++    quality: process.env.IMAGE_QUALITY || "low",
++  });
++}
++
+ function buildRenderPrompt(vehicle) {
+   const brand = safeText(vehicle?.brand, "car brand");
+   const model = safeText(vehicle?.model, "car model");
+@@ -57,24 +78,38 @@
+     const openai = getOpenAI();
+     const prompt = buildRenderPrompt(vehicle);
+ 
+-    const result = await openai.images.generate({
+-      model: "gpt-image-1",
+-      prompt,
+-      size: "1024x1024",
+-    });
++    const preferredModel = process.env.IMAGE_MODEL || "gpt-image-1";
++    const fallbackModel = preferredModel === "openai/gpt-image-1" ? "gpt-image-1" : "openai/gpt-image-1";
++
++    let usedModel = preferredModel;
++    let result;
++    try {
++      result = await generateImage(openai, prompt, preferredModel);
++    } catch (firstError) {
++      console.warn("Primary image model failed, retrying with fallback", {
++        preferredModel,
++        fallbackModel,
++        error: firstError?.message || String(firstError),
++      });
++      usedModel = fallbackModel;
++      result = await generateImage(openai, prompt, fallbackModel);
++    }
+ 
+-    const first = result?.data?.[0];
+-    const imageUrl = first?.b64_json
+-      ? `data:image/png;base64,${first.b64_json}`
+-      : first?.url || null;
++    const imageUrl = extractImageUrl(result);
+ 
+     if (!imageUrl) {
+-      throw new Error("Image generation returned no image");
++      return res.status(502).json({
++        error: "Image generation returned no image",
++        details: `AITUNNEL response did not contain url or b64_json. data[0] keys: ${Object.keys(result?.data?.[0] || {}).join(", ") || "none"}`,
++        model: usedModel,
++      });
+     }
+ 
+     return res.status(200).json({
+       imageUrl,
+       prompt,
++      model: usedModel,
++      quality: process.env.IMAGE_QUALITY || "low",
+       generatedAt: new Date().toISOString(),
+     });
+   } catch (error) {
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -189,19 +189,25 @@
+         body: JSON.stringify({ vehicle: customVehicle }),
+       });
+ 
+-      const result = await response.json();
+-      if (!response.ok) throw new Error(result.details || result.error || "Render generation failed");
++      const result = await response.json().catch(() => ({}));
++      if (!response.ok) {
++        throw new Error(result.details || result.error || `Render generation failed: HTTP ${response.status}`);
++      }
++      if (!result.imageUrl) {
++        throw new Error("Render API completed, but imageUrl is empty");
++      }
+ 
+       setVehicleRender({
+         status: "ready",
+         imageUrl: result.imageUrl,
+         prompt: result.prompt || "",
++        model: result.model || "",
+         generatedAt: result.generatedAt || new Date().toISOString(),
+         error: "",
+         vehicleFingerprint: fingerprint,
+       });
+     } catch (error) {
+-      console.error(error);
++      console.error("Vehicle render generation failed", error);
+       setVehicleRender((prev) => ({
+         ...prev,
+         status: "error",
+--- a/src/components/HomeScreen.jsx
++++ b/src/components/HomeScreen.jsx
+@@ -125,7 +125,10 @@
+             <div className="hero-render-badge ready">AI render</div>
+           )}
+           {vehicleRender?.status === "error" && (
+-            <div className="hero-render-badge error">Рендер не создан</div>
++            <div className="hero-render-badge error" title={vehicleRender.error || ""}>
++              Рендер не создан
++              {vehicleRender.error && <span className="hero-render-error-text">{vehicleRender.error}</span>}
++            </div>
+           )}
+           <div className="hero-brand">{vehicle.brand}</div>
+           <div className="hero-model">{vehicle.model}</div>
+--- a/src/App.css
++++ b/src/App.css
+@@ -30,7 +30,8 @@
+ .hero-render-badge{align-self:flex-start;margin-bottom:auto;padding:6px 10px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(8px)}
+ .hero-render-badge.ready{background:rgba(15,23,42,.5);color:#e5edf9}
+ .hero-render-badge.loading{background:rgba(37,99,235,.18);color:#bfdbfe}
+-.hero-render-badge.error{background:rgba(239,68,68,.16);color:#fecaca}
++.hero-render-badge.error{background:rgba(239,68,68,.16);color:#fecaca;max-width:100%}
++.hero-render-error-text{display:block;max-width:310px;margin-top:3px;text-transform:none;letter-spacing:0;color:#fca5a5;font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .hero-brand{font-size:11px;color:#8fa4c7;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px;font-weight:700}
+ .hero-model{font-size:28px;font-weight:800;margin-bottom:10px;letter-spacing:-0.5px;line-height:1.1;text-shadow:0 10px 30px rgba(0,0,0,.28)}
+ .hero-chips{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:14px}

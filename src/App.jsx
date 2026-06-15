@@ -189,19 +189,25 @@ export default function App() {
         body: JSON.stringify({ vehicle: customVehicle }),
       });
 
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.details || result.error || "Render generation failed");
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.details || result.error || `Render generation failed: HTTP ${response.status}`);
+      }
+      if (!result.imageUrl) {
+        throw new Error("Render API completed, but imageUrl is empty");
+      }
 
       setVehicleRender({
         status: "ready",
         imageUrl: result.imageUrl,
         prompt: result.prompt || "",
+        model: result.model || "",
         generatedAt: result.generatedAt || new Date().toISOString(),
         error: "",
         vehicleFingerprint: fingerprint,
       });
     } catch (error) {
-      console.error(error);
+      console.error("Vehicle render generation failed", error);
       setVehicleRender((prev) => ({
         ...prev,
         status: "error",
