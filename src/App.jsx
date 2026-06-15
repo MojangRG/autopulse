@@ -50,6 +50,17 @@ const defaultData = {
 };
 
 const CHAT_KEY = "autopulse-chat";
+const RENDER_KEY = "autopulse-vehicle-render";
+
+function emptyRenderState() {
+  return { status: "idle", imageUrl: "", prompt: "", generatedAt: "", error: "", vehicleFingerprint: "" };
+}
+
+function getVehicleRenderFingerprint(vehicle) {
+  return [vehicle?.brand, vehicle?.model, vehicle?.generation, vehicle?.year, vehicle?.color]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .join("|");
+}
 
 function todayIso() { return new Date().toISOString().slice(0, 10); }
 
@@ -104,8 +115,16 @@ export default function App() {
   const [chat, setChat]             = useState(() => {
     try { return JSON.parse(localStorage.getItem(CHAT_KEY) || "[]"); } catch { return []; }
   });
+  const [vehicleRender, setVehicleRender] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(RENDER_KEY) || "null");
+      return saved || emptyRenderState();
+    } catch {
+      return emptyRenderState();
+    }
+  });
 
-  const [vehicleForm, setVehicleForm] = useState({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", mileage: 86000 });
+  const [vehicleForm, setVehicleForm] = useState({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", color: "", mileage: 86000 });
   const [manualOpen, setManualOpen]   = useState(false);
   const [editingLogId, setEditingLogId] = useState(null);
   const [workDraft, setWorkDraft]     = useState({ normalizedId: "engine_service", title: "ТО двигателя", mileage: data.mileage, cost: "", datePerformed: todayIso(), note: "" });
@@ -120,9 +139,11 @@ export default function App() {
   const [isAsking, setIsAsking]           = useState(false);
   const [isParsingSts, setIsParsingSts]   = useState(false);
   const [isParsingDoc, setIsParsingDoc]   = useState(false);
+  const [isGeneratingRender, setIsGeneratingRender] = useState(false);
 
   useEffect(() => { localStorage.setItem("autopulse-data", JSON.stringify(data)); }, [data]);
   useEffect(() => { if (vehicle) localStorage.setItem("autopulse-vehicle", JSON.stringify(vehicle)); }, [vehicle]);
+  useEffect(() => { localStorage.setItem(RENDER_KEY, JSON.stringify(vehicleRender || emptyRenderState())); }, [vehicleRender]);
   useEffect(() => {
     const limited = chat.slice(-20); // Keep last 20 messages
     localStorage.setItem(CHAT_KEY, JSON.stringify(limited));
@@ -139,6 +160,58 @@ export default function App() {
     const updated = generateReminders({ schedule: orch.schedule, data, ownerProfile });
     setReminders(updated.filter((r) => r.status === "active"));
   }, [orch.schedule, data, ownerProfile, vehicle]);
+
+  function clearVehicleRender() {
+    localStorage.removeItem(RENDER_KEY);
+    setVehicleRender(emptyRenderState());
+  }
+
+  async function generateVehicleRender(customVehicle = vehicle, options = {}) {
+    if (!customVehicle?.brand || !customVehicle?.model) return;
+
+    const fingerprint = getVehicleRenderFingerprint(customVehicle);
+    if (!options.force && vehicleRender?.status === "ready" && vehicleRender?.vehicleFingerprint === fingerprint) {
+      return;
+    }
+
+    try {
+      setIsGeneratingRender(true);
+      setVehicleRender((prev) => ({
+        ...prev,
+        status: "loading",
+        error: "",
+        vehicleFingerprint: fingerprint,
+      }));
+
+      const response = await fetch("/api/generate-car-render", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vehicle: customVehicle }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.details || result.error || "Render generation failed");
+
+      setVehicleRender({
+        status: "ready",
+        imageUrl: result.imageUrl,
+        prompt: result.prompt || "",
+        generatedAt: result.generatedAt || new Date().toISOString(),
+        error: "",
+        vehicleFingerprint: fingerprint,
+      });
+    } catch (error) {
+      console.error(error);
+      setVehicleRender((prev) => ({
+        ...prev,
+        status: "error",
+        error: error.message,
+        vehicleFingerprint: fingerprint,
+      }));
+    } finally {
+      setIsGeneratingRender(false);
+    }
+  }
 
   // ── API: analyze vehicle ──────────────────────────────────────────────────
   async function analyzeVehicle(customData = data, customProfile = profile, customVehicle = vehicle) {
@@ -173,18 +246,23 @@ export default function App() {
       const response = await fetch("/api/create-vehicle-profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vin, mileage: Number(vehicleForm.mileage || 0) }),
+        body: JSON.stringify({ vin, mileage: Number(vehicleForm.mileage || 0), color: vehicleForm.color }),
       });
       const result = await response.json();
       if (!response.ok) return alert(result.details || result.error || "Не удалось определить автомобиль");
+      const mergedVehicle = {
+        ...result.vehicle,
+        color: String(vehicleForm.color || result.vehicle?.color || "").trim(),
+      };
       const nextData = { ...data, mileage: Number(vehicleForm.mileage || 0) };
-      setVehicle(result.vehicle);
+      setVehicle(mergedVehicle);
       localStorage.setItem("autopulse-profile", JSON.stringify(result.profile));
       setProfile(result.profile);
       setData(nextData);
       setNewMileage(nextData.mileage);
       setWorkDraft((p) => ({ ...p, mileage: nextData.mileage }));
-      if (!ownerProfile) { setProfileOnboardingOpen(true); } else { setTab("home"); setTimeout(() => analyzeVehicle(nextData, result.profile, result.vehicle), 300); }
+      generateVehicleRender(mergedVehicle);
+      if (!ownerProfile) { setProfileOnboardingOpen(true); } else { setTab("home"); setTimeout(() => analyzeVehicle(nextData, result.profile, mergedVehicle), 300); }
     } catch (error) { alert("Ошибка связи с сервером: " + error.message); }
     finally { setIsDetecting(false); }
   }
@@ -211,6 +289,7 @@ export default function App() {
         engine: result.vehicle?.engine || prev.engine,
         transmission: result.vehicle?.transmission || prev.transmission,
         drive: result.vehicle?.drive || prev.drive,
+        color: result.vehicle?.color || result.extracted?.color || prev.color,
       }));
       // STS data is now placed into the onboarding form. The user can continue by VIN or manual confirmation.
     } catch (error) { alert("Ошибка распознавания СТС: " + error.message); }
@@ -322,13 +401,25 @@ export default function App() {
   }
 
   function saveVehicleManually() {
-    const v = { vin: vehicleForm.vin, brand: vehicleForm.brand, model: vehicleForm.model, generation: vehicleForm.generation, year: Number(vehicleForm.year), engine: vehicleForm.engine, transmission: vehicleForm.transmission, drive: vehicleForm.drive, market: "manual" };
+    const v = {
+      vin: vehicleForm.vin,
+      brand: vehicleForm.brand,
+      model: vehicleForm.model,
+      generation: vehicleForm.generation,
+      year: Number(vehicleForm.year),
+      engine: vehicleForm.engine,
+      transmission: vehicleForm.transmission,
+      drive: vehicleForm.drive,
+      color: vehicleForm.color,
+      market: "manual",
+    };
     const nextData = { ...data, mileage: Number(vehicleForm.mileage) };
     setVehicle(v); setData(nextData); setNewMileage(nextData.mileage); setWorkDraft((p) => ({ ...p, mileage: nextData.mileage }));
+    generateVehicleRender(v);
     if (!ownerProfile) { setProfileOnboardingOpen(true); } else { setTab("home"); }
   }
 
-  function fillDemoVehicle() { setVehicleForm({ vin: "JF1SK7AC2MG117103", brand: "Subaru", model: "Forester", generation: "SK", year: "2020", engine: "FB20", transmission: "CVT", drive: "AWD", mileage: 86000 }); }
+  function fillDemoVehicle() { setVehicleForm({ vin: "JF1SK7AC2MG117103", brand: "Subaru", model: "Forester", generation: "SK", year: "2020", engine: "FB20", transmission: "CVT", drive: "AWD", color: "темно-синий металлик", mileage: 86000 }); }
 
   function saveMileage() {
     const nextData = { ...data, mileage: Number(newMileage) };
@@ -411,17 +502,19 @@ export default function App() {
 
   function resetData() {
     if (!confirm("Сбросить данные AutoPulse?")) return;
-    ["autopulse-data","autopulse-vehicle","autopulse-profile","autopulse-analysis","autopulse-owner-profile","autopulse-reminders", CHAT_KEY].forEach((k) => localStorage.removeItem(k));
+    ["autopulse-data","autopulse-vehicle","autopulse-profile","autopulse-analysis","autopulse-owner-profile","autopulse-reminders", CHAT_KEY, RENDER_KEY].forEach((k) => localStorage.removeItem(k));
     setVehicle(null); setProfile(null); setAnalysis(null); setOwnerProfile(null);
     setData(defaultData); setNewMileage(defaultData.mileage); setChat([]); setReminders([]);
-    setVehicleForm({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", mileage: 86000 });
+    clearVehicleRender();
+    setVehicleForm({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", color: "", mileage: 86000 });
     setTab("home");
   }
 
   function changeVehicle() {
-    ["autopulse-vehicle","autopulse-profile","autopulse-analysis"].forEach((k) => localStorage.removeItem(k));
+    ["autopulse-vehicle","autopulse-profile","autopulse-analysis", RENDER_KEY].forEach((k) => localStorage.removeItem(k));
     setVehicle(null); setProfile(null); setAnalysis(null);
-    setVehicleForm({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", mileage: data.mileage });
+    clearVehicleRender();
+    setVehicleForm({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", color: "", mileage: data.mileage });
     setTab("home");
   }
 
@@ -459,6 +552,7 @@ export default function App() {
             <input value={vehicleForm.engine}       onChange={(e) => updateVehicleField("engine", e.target.value)}       placeholder="Двигатель" />
             <input value={vehicleForm.transmission} onChange={(e) => updateVehicleField("transmission", e.target.value)} placeholder="Коробка" />
             <input value={vehicleForm.drive}        onChange={(e) => updateVehicleField("drive", e.target.value)}        placeholder="Привод" />
+            <input value={vehicleForm.color}        onChange={(e) => updateVehicleField("color", e.target.value)}        placeholder="Цвет" />
             <button className="btn btn-blue" onClick={saveVehicleManually}>Сохранить вручную</button>
           </details>
           <button className="btn btn-gray" onClick={fillDemoVehicle}>Заполнить демо Subaru</button>
@@ -570,6 +664,8 @@ export default function App() {
           statusSentence={orch.statusSentence}
           primaryAction={orch.primaryAction}
           reminders={reminders}
+          vehicleRender={vehicleRender}
+          isGeneratingRender={isGeneratingRender}
           isParsingDoc={isParsingDoc}
           onScan={parseServiceDocument}
           onManualAdd={() => openManualForm()}
@@ -626,6 +722,8 @@ export default function App() {
           onReset={resetData}
           vehicle={vehicle}
           onChangeVehicle={changeVehicle}
+          onRegenerateRender={() => generateVehicleRender(vehicle, { force: true })}
+          isGeneratingRender={isGeneratingRender}
           onClearChat={clearChatHistory}
           chatCount={chat.length}
         />

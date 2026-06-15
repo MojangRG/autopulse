@@ -26,6 +26,7 @@ function mockVinProvider(vin) {
       transmission: "CVT",
       drive: "AWD",
       market: "RU",
+      color: "темно-синий металлик",
     };
   }
 
@@ -39,6 +40,7 @@ function mockVinProvider(vin) {
     transmission: "",
     drive: "",
     market: "unknown",
+    color: "",
   };
 }
 
@@ -59,6 +61,7 @@ const serviceProfileSchema = {
         transmission: { type: "string" },
         drive: { type: "string" },
         market: { type: "string" },
+        color: { type: "string" },
       },
       required: [
         "vin",
@@ -70,6 +73,7 @@ const serviceProfileSchema = {
         "transmission",
         "drive",
         "market",
+        "color",
       ],
     },
     serviceItems: {
@@ -150,8 +154,11 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Method not allowed" });
     }
 
-    const { vin, mileage } = req.body || {};
-    const vehicle = mockVinProvider(vin);
+    const { vin, mileage, color } = req.body || {};
+    const vehicle = {
+      ...mockVinProvider(vin),
+      color: String(color || mockVinProvider(vin).color || "").trim(),
+    };
 
     if (vehicle.brand === "Unknown") {
       return res.status(404).json({

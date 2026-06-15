@@ -5,7 +5,7 @@ function rub(v) { return Number(v || 0).toLocaleString("ru-RU") + " ₽"; }
 
 const STATUS_LABEL = { "Просрочено": "overdue", "Скоро": "soon", "Норма": "ok" };
 
-export default function MoreScreen({ serviceRules, schedule, data, totalSpent, onReset, vehicle, onChangeVehicle, onClearChat, chatCount }) {
+export default function MoreScreen({ serviceRules, schedule, data, totalSpent, onReset, vehicle, onChangeVehicle, onRegenerateRender, isGeneratingRender, onClearChat, chatCount }) {
   const [section, setSection] = useState("schedule");
 
   return (
@@ -81,6 +81,9 @@ export default function MoreScreen({ serviceRules, schedule, data, totalSpent, o
 
       {section === "settings" && (
         <>
+          <button className="btn btn-gray" onClick={onRegenerateRender} disabled={isGeneratingRender} style={{ marginBottom: "10px" }}>
+            {isGeneratingRender ? "Генерирую AI-рендер..." : "Обновить AI-рендер"}
+          </button>
           <button className="btn btn-gray" onClick={onChangeVehicle} style={{ marginBottom: "10px" }}>
             Сменить автомобиль
           </button>

@@ -23,9 +23,9 @@ function fileToDataUrl(file) {
 function mockVinProvider(vin) {
   const v = String(vin || "").trim().toUpperCase();
   if (v === "JF1SK7AC2MG117103") {
-    return { vin: v, brand: "Subaru", model: "Forester", generation: "SK", year: 2020, engine: "FB20", transmission: "CVT", drive: "AWD", market: "RU" };
+    return { vin: v, brand: "Subaru", model: "Forester", generation: "SK", year: 2020, engine: "FB20", transmission: "CVT", drive: "AWD", market: "RU", color: "темно-синий металлик" };
   }
-  return { vin: v, brand: "", model: "", generation: "", year: null, engine: "", transmission: "", drive: "", market: "unknown" };
+  return { vin: v, brand: "", model: "", generation: "", year: null, engine: "", transmission: "", drive: "", market: "unknown", color: "" };
 }
 
 export default async function handler(req, res) {
@@ -58,6 +58,7 @@ export default async function handler(req, res) {
 - year: год выпуска (число)
 - plate: государственный регистрационный номер
 - category: категория ТС (A, B, C и т.д.)
+- color: цвет автомобиля из СТС
 - confidence: общая уверенность в распознавании ("high"/"medium"/"low")
 
 Правила:
@@ -70,7 +71,7 @@ export default async function handler(req, res) {
           content: [
             {
               type: "text",
-              text: "Распознай СТС. Верни JSON: { vin, brand, model, year, plate, category, confidence }. Пустые поля — null или пустая строка.",
+              text: "Распознай СТС. Верни JSON: { vin, brand, model, year, plate, category, color, confidence }. Пустые поля — null или пустая строка.",
             },
             { type: "image_url", image_url: { url: imageUrl } },
           ],
@@ -79,7 +80,10 @@ export default async function handler(req, res) {
     });
 
     const extracted = JSON.parse(response.choices[0].message.content || "{}");
-    const vehicle = mockVinProvider(extracted.vin);
+    const vehicle = {
+      ...mockVinProvider(extracted.vin),
+      color: extracted.color || mockVinProvider(extracted.vin).color || "",
+    };
 
     return res.status(200).json({ extracted, vehicle, profile: null });
   } catch (error) {

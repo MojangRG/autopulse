@@ -1,0 +1,556 @@
+--- a/api/create-vehicle-profile.js
++++ b/api/create-vehicle-profile.js
+@@ -26,6 +26,7 @@
+       transmission: "CVT",
+       drive: "AWD",
+       market: "RU",
++      color: "темно-синий металлик",
+     };
+   }
+ 
+@@ -39,6 +40,7 @@
+     transmission: "",
+     drive: "",
+     market: "unknown",
++    color: "",
+   };
+ }
+ 
+@@ -59,6 +61,7 @@
+         transmission: { type: "string" },
+         drive: { type: "string" },
+         market: { type: "string" },
++        color: { type: "string" },
+       },
+       required: [
+         "vin",
+@@ -70,6 +73,7 @@
+         "transmission",
+         "drive",
+         "market",
++        "color",
+       ],
+     },
+     serviceItems: {
+@@ -150,8 +154,11 @@
+       return res.status(405).json({ error: "Method not allowed" });
+     }
+ 
+-    const { vin, mileage } = req.body || {};
+-    const vehicle = mockVinProvider(vin);
++    const { vin, mileage, color } = req.body || {};
++    const vehicle = {
++      ...mockVinProvider(vin),
++      color: String(color || mockVinProvider(vin).color || "").trim(),
++    };
+ 
+     if (vehicle.brand === "Unknown") {
+       return res.status(404).json({
+--- a/api/parse-sts.js
++++ b/api/parse-sts.js
+@@ -23,9 +23,9 @@
+ function mockVinProvider(vin) {
+   const v = String(vin || "").trim().toUpperCase();
+   if (v === "JF1SK7AC2MG117103") {
+-    return { vin: v, brand: "Subaru", model: "Forester", generation: "SK", year: 2020, engine: "FB20", transmission: "CVT", drive: "AWD", market: "RU" };
++    return { vin: v, brand: "Subaru", model: "Forester", generation: "SK", year: 2020, engine: "FB20", transmission: "CVT", drive: "AWD", market: "RU", color: "темно-синий металлик" };
+   }
+-  return { vin: v, brand: "", model: "", generation: "", year: null, engine: "", transmission: "", drive: "", market: "unknown" };
++  return { vin: v, brand: "", model: "", generation: "", year: null, engine: "", transmission: "", drive: "", market: "unknown", color: "" };
+ }
+ 
+ export default async function handler(req, res) {
+@@ -58,6 +58,7 @@
+ - year: год выпуска (число)
+ - plate: государственный регистрационный номер
+ - category: категория ТС (A, B, C и т.д.)
++- color: цвет автомобиля из СТС
+ - confidence: общая уверенность в распознавании ("high"/"medium"/"low")
+ 
+ Правила:
+@@ -70,7 +71,7 @@
+           content: [
+             {
+               type: "text",
+-              text: "Распознай СТС. Верни JSON: { vin, brand, model, year, plate, category, confidence }. Пустые поля — null или пустая строка.",
++              text: "Распознай СТС. Верни JSON: { vin, brand, model, year, plate, category, color, confidence }. Пустые поля — null или пустая строка.",
+             },
+             { type: "image_url", image_url: { url: imageUrl } },
+           ],
+@@ -79,7 +80,10 @@
+     });
+ 
+     const extracted = JSON.parse(response.choices[0].message.content || "{}");
+-    const vehicle = mockVinProvider(extracted.vin);
++    const vehicle = {
++      ...mockVinProvider(extracted.vin),
++      color: extracted.color || mockVinProvider(extracted.vin).color || "",
++    };
+ 
+     return res.status(200).json({ extracted, vehicle, profile: null });
+   } catch (error) {
+--- /dev/null
++++ b/api/generate-car-render.js
+@@ -0,0 +1,87 @@
++import OpenAI from "openai";
++
++function getOpenAI() {
++  if (!process.env.OPENAI_API_KEY) {
++    throw new Error("OPENAI_API_KEY is missing");
++  }
++
++  return new OpenAI({
++    apiKey: process.env.OPENAI_API_KEY,
++    baseURL: "https://api.aitunnel.ru/v1",
++  });
++}
++
++function safeText(value, fallback = "") {
++  return String(value || fallback).trim();
++}
++
++function buildRenderPrompt(vehicle) {
++  const brand = safeText(vehicle?.brand, "car brand");
++  const model = safeText(vehicle?.model, "car model");
++  const generation = safeText(vehicle?.generation);
++  const year = safeText(vehicle?.year);
++  const color = safeText(vehicle?.color, "graphite metallic");
++  const transmission = safeText(vehicle?.transmission);
++  const drive = safeText(vehicle?.drive);
++  const engine = safeText(vehicle?.engine);
++
++  const vehicleName = [year, brand, model, generation].filter(Boolean).join(" ");
++  const techLine = [engine, transmission, drive].filter(Boolean).join(", ");
++
++  return [
++    "Create a premium high-end automotive hero render for a mobile app dashboard.",
++    `Subject: ${vehicleName || `${brand} ${model}`}.`,
++    `Paint color: ${color}.`,
++    techLine ? `Vehicle spec hints: ${techLine}.` : null,
++    "Show exactly one car, no people, no extra vehicles, no dealership scene.",
++    "View angle: front three-quarter view, centered, slightly low camera, expensive studio composition.",
++    "Style: polished 3D render, realistic materials, luxury reflections, cinematic soft lighting, premium automotive ad quality.",
++    "Background: dark midnight studio, subtle blue glow, minimal futuristic atmosphere, clean space for UI overlays.",
++    "The car must look modern, desirable and believable for the specified make/model family.",
++    "No text, no interface, no watermarks, no logos floating in the scene.",
++    "Keep the body silhouette clearly readable and visually striking.",
++  ].filter(Boolean).join(" ");
++}
++
++export default async function handler(req, res) {
++  try {
++    if (req.method !== "POST") {
++      return res.status(405).json({ error: "Method not allowed" });
++    }
++
++    const vehicle = req.body?.vehicle;
++    if (!vehicle?.brand || !vehicle?.model) {
++      return res.status(400).json({ error: "Vehicle brand and model are required" });
++    }
++
++    const openai = getOpenAI();
++    const prompt = buildRenderPrompt(vehicle);
++
++    const result = await openai.images.generate({
++      model: "gpt-image-1",
++      prompt,
++      size: "1024x1024",
++    });
++
++    const first = result?.data?.[0];
++    const imageUrl = first?.b64_json
++      ? `data:image/png;base64,${first.b64_json}`
++      : first?.url || null;
++
++    if (!imageUrl) {
++      throw new Error("Image generation returned no image");
++    }
++
++    return res.status(200).json({
++      imageUrl,
++      prompt,
++      generatedAt: new Date().toISOString(),
++    });
++  } catch (error) {
++    console.error(error);
++    return res.status(500).json({
++      error: "Failed to generate vehicle render",
++      details: error?.message || String(error),
++    });
++  }
++}
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -50,6 +50,17 @@
+ };
+ 
+ const CHAT_KEY = "autopulse-chat";
++const RENDER_KEY = "autopulse-vehicle-render";
++
++function emptyRenderState() {
++  return { status: "idle", imageUrl: "", prompt: "", generatedAt: "", error: "", vehicleFingerprint: "" };
++}
++
++function getVehicleRenderFingerprint(vehicle) {
++  return [vehicle?.brand, vehicle?.model, vehicle?.generation, vehicle?.year, vehicle?.color]
++    .map((value) => String(value || "").trim().toLowerCase())
++    .join("|");
++}
+ 
+ function todayIso() { return new Date().toISOString().slice(0, 10); }
+ 
+@@ -104,8 +115,16 @@
+   const [chat, setChat]             = useState(() => {
+     try { return JSON.parse(localStorage.getItem(CHAT_KEY) || "[]"); } catch { return []; }
+   });
++  const [vehicleRender, setVehicleRender] = useState(() => {
++    try {
++      const saved = JSON.parse(localStorage.getItem(RENDER_KEY) || "null");
++      return saved || emptyRenderState();
++    } catch {
++      return emptyRenderState();
++    }
++  });
+ 
+-  const [vehicleForm, setVehicleForm] = useState({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", mileage: 86000 });
++  const [vehicleForm, setVehicleForm] = useState({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", color: "", mileage: 86000 });
+   const [manualOpen, setManualOpen]   = useState(false);
+   const [editingLogId, setEditingLogId] = useState(null);
+   const [workDraft, setWorkDraft]     = useState({ normalizedId: "engine_service", title: "ТО двигателя", mileage: data.mileage, cost: "", datePerformed: todayIso(), note: "" });
+@@ -120,9 +139,11 @@
+   const [isAsking, setIsAsking]           = useState(false);
+   const [isParsingSts, setIsParsingSts]   = useState(false);
+   const [isParsingDoc, setIsParsingDoc]   = useState(false);
++  const [isGeneratingRender, setIsGeneratingRender] = useState(false);
+ 
+   useEffect(() => { localStorage.setItem("autopulse-data", JSON.stringify(data)); }, [data]);
+   useEffect(() => { if (vehicle) localStorage.setItem("autopulse-vehicle", JSON.stringify(vehicle)); }, [vehicle]);
++  useEffect(() => { localStorage.setItem(RENDER_KEY, JSON.stringify(vehicleRender || emptyRenderState())); }, [vehicleRender]);
+   useEffect(() => {
+     const limited = chat.slice(-20); // Keep last 20 messages
+     localStorage.setItem(CHAT_KEY, JSON.stringify(limited));
+@@ -140,6 +161,58 @@
+     setReminders(updated.filter((r) => r.status === "active"));
+   }, [orch.schedule, data, ownerProfile, vehicle]);
+ 
++  function clearVehicleRender() {
++    localStorage.removeItem(RENDER_KEY);
++    setVehicleRender(emptyRenderState());
++  }
++
++  async function generateVehicleRender(customVehicle = vehicle, options = {}) {
++    if (!customVehicle?.brand || !customVehicle?.model) return;
++
++    const fingerprint = getVehicleRenderFingerprint(customVehicle);
++    if (!options.force && vehicleRender?.status === "ready" && vehicleRender?.vehicleFingerprint === fingerprint) {
++      return;
++    }
++
++    try {
++      setIsGeneratingRender(true);
++      setVehicleRender((prev) => ({
++        ...prev,
++        status: "loading",
++        error: "",
++        vehicleFingerprint: fingerprint,
++      }));
++
++      const response = await fetch("/api/generate-car-render", {
++        method: "POST",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({ vehicle: customVehicle }),
++      });
++
++      const result = await response.json();
++      if (!response.ok) throw new Error(result.details || result.error || "Render generation failed");
++
++      setVehicleRender({
++        status: "ready",
++        imageUrl: result.imageUrl,
++        prompt: result.prompt || "",
++        generatedAt: result.generatedAt || new Date().toISOString(),
++        error: "",
++        vehicleFingerprint: fingerprint,
++      });
++    } catch (error) {
++      console.error(error);
++      setVehicleRender((prev) => ({
++        ...prev,
++        status: "error",
++        error: error.message,
++        vehicleFingerprint: fingerprint,
++      }));
++    } finally {
++      setIsGeneratingRender(false);
++    }
++  }
++
+   // ── API: analyze vehicle ──────────────────────────────────────────────────
+   async function analyzeVehicle(customData = data, customProfile = profile, customVehicle = vehicle) {
+     if (!customVehicle || !customProfile || !customData) return;
+@@ -173,18 +246,23 @@
+       const response = await fetch("/api/create-vehicle-profile", {
+         method: "POST",
+         headers: { "Content-Type": "application/json" },
+-        body: JSON.stringify({ vin, mileage: Number(vehicleForm.mileage || 0) }),
++        body: JSON.stringify({ vin, mileage: Number(vehicleForm.mileage || 0), color: vehicleForm.color }),
+       });
+       const result = await response.json();
+       if (!response.ok) return alert(result.details || result.error || "Не удалось определить автомобиль");
++      const mergedVehicle = {
++        ...result.vehicle,
++        color: String(vehicleForm.color || result.vehicle?.color || "").trim(),
++      };
+       const nextData = { ...data, mileage: Number(vehicleForm.mileage || 0) };
+-      setVehicle(result.vehicle);
++      setVehicle(mergedVehicle);
+       localStorage.setItem("autopulse-profile", JSON.stringify(result.profile));
+       setProfile(result.profile);
+       setData(nextData);
+       setNewMileage(nextData.mileage);
+       setWorkDraft((p) => ({ ...p, mileage: nextData.mileage }));
+-      if (!ownerProfile) { setProfileOnboardingOpen(true); } else { setTab("home"); setTimeout(() => analyzeVehicle(nextData, result.profile, result.vehicle), 300); }
++      generateVehicleRender(mergedVehicle);
++      if (!ownerProfile) { setProfileOnboardingOpen(true); } else { setTab("home"); setTimeout(() => analyzeVehicle(nextData, result.profile, mergedVehicle), 300); }
+     } catch (error) { alert("Ошибка связи с сервером: " + error.message); }
+     finally { setIsDetecting(false); }
+   }
+@@ -211,6 +289,7 @@
+         engine: result.vehicle?.engine || prev.engine,
+         transmission: result.vehicle?.transmission || prev.transmission,
+         drive: result.vehicle?.drive || prev.drive,
++        color: result.vehicle?.color || result.extracted?.color || prev.color,
+       }));
+       // STS data is now placed into the onboarding form. The user can continue by VIN or manual confirmation.
+     } catch (error) { alert("Ошибка распознавания СТС: " + error.message); }
+@@ -322,13 +401,25 @@
+   }
+ 
+   function saveVehicleManually() {
+-    const v = { vin: vehicleForm.vin, brand: vehicleForm.brand, model: vehicleForm.model, generation: vehicleForm.generation, year: Number(vehicleForm.year), engine: vehicleForm.engine, transmission: vehicleForm.transmission, drive: vehicleForm.drive, market: "manual" };
++    const v = {
++      vin: vehicleForm.vin,
++      brand: vehicleForm.brand,
++      model: vehicleForm.model,
++      generation: vehicleForm.generation,
++      year: Number(vehicleForm.year),
++      engine: vehicleForm.engine,
++      transmission: vehicleForm.transmission,
++      drive: vehicleForm.drive,
++      color: vehicleForm.color,
++      market: "manual",
++    };
+     const nextData = { ...data, mileage: Number(vehicleForm.mileage) };
+     setVehicle(v); setData(nextData); setNewMileage(nextData.mileage); setWorkDraft((p) => ({ ...p, mileage: nextData.mileage }));
++    generateVehicleRender(v);
+     if (!ownerProfile) { setProfileOnboardingOpen(true); } else { setTab("home"); }
+   }
+ 
+-  function fillDemoVehicle() { setVehicleForm({ vin: "JF1SK7AC2MG117103", brand: "Subaru", model: "Forester", generation: "SK", year: "2020", engine: "FB20", transmission: "CVT", drive: "AWD", mileage: 86000 }); }
++  function fillDemoVehicle() { setVehicleForm({ vin: "JF1SK7AC2MG117103", brand: "Subaru", model: "Forester", generation: "SK", year: "2020", engine: "FB20", transmission: "CVT", drive: "AWD", color: "темно-синий металлик", mileage: 86000 }); }
+ 
+   function saveMileage() {
+     const nextData = { ...data, mileage: Number(newMileage) };
+@@ -411,17 +502,19 @@
+ 
+   function resetData() {
+     if (!confirm("Сбросить данные AutoPulse?")) return;
+-    ["autopulse-data","autopulse-vehicle","autopulse-profile","autopulse-analysis","autopulse-owner-profile","autopulse-reminders", CHAT_KEY].forEach((k) => localStorage.removeItem(k));
++    ["autopulse-data","autopulse-vehicle","autopulse-profile","autopulse-analysis","autopulse-owner-profile","autopulse-reminders", CHAT_KEY, RENDER_KEY].forEach((k) => localStorage.removeItem(k));
+     setVehicle(null); setProfile(null); setAnalysis(null); setOwnerProfile(null);
+     setData(defaultData); setNewMileage(defaultData.mileage); setChat([]); setReminders([]);
+-    setVehicleForm({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", mileage: 86000 });
++    clearVehicleRender();
++    setVehicleForm({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", color: "", mileage: 86000 });
+     setTab("home");
+   }
+ 
+   function changeVehicle() {
+-    ["autopulse-vehicle","autopulse-profile","autopulse-analysis"].forEach((k) => localStorage.removeItem(k));
++    ["autopulse-vehicle","autopulse-profile","autopulse-analysis", RENDER_KEY].forEach((k) => localStorage.removeItem(k));
+     setVehicle(null); setProfile(null); setAnalysis(null);
+-    setVehicleForm({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", mileage: data.mileage });
++    clearVehicleRender();
++    setVehicleForm({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", color: "", mileage: data.mileage });
+     setTab("home");
+   }
+ 
+@@ -459,6 +552,7 @@
+             <input value={vehicleForm.engine}       onChange={(e) => updateVehicleField("engine", e.target.value)}       placeholder="Двигатель" />
+             <input value={vehicleForm.transmission} onChange={(e) => updateVehicleField("transmission", e.target.value)} placeholder="Коробка" />
+             <input value={vehicleForm.drive}        onChange={(e) => updateVehicleField("drive", e.target.value)}        placeholder="Привод" />
++            <input value={vehicleForm.color}        onChange={(e) => updateVehicleField("color", e.target.value)}        placeholder="Цвет" />
+             <button className="btn btn-blue" onClick={saveVehicleManually}>Сохранить вручную</button>
+           </details>
+           <button className="btn btn-gray" onClick={fillDemoVehicle}>Заполнить демо Subaru</button>
+@@ -570,6 +664,8 @@
+           statusSentence={orch.statusSentence}
+           primaryAction={orch.primaryAction}
+           reminders={reminders}
++          vehicleRender={vehicleRender}
++          isGeneratingRender={isGeneratingRender}
+           isParsingDoc={isParsingDoc}
+           onScan={parseServiceDocument}
+           onManualAdd={() => openManualForm()}
+@@ -626,6 +722,8 @@
+           onReset={resetData}
+           vehicle={vehicle}
+           onChangeVehicle={changeVehicle}
++          onRegenerateRender={() => generateVehicleRender(vehicle, { force: true })}
++          isGeneratingRender={isGeneratingRender}
+           onClearChat={clearChatHistory}
+           chatCount={chat.length}
+         />
+--- a/src/App.css
++++ b/src/App.css
+@@ -21,19 +21,27 @@
+ .home-screen{padding:0 16px 20px}
+ 
+ /* Hero card */
+-.hero-card{background:linear-gradient(145deg,#0e1420 0%,#090c14 100%);border:1px solid rgba(255,255,255,0.06);border-radius:28px;padding:22px 20px 18px;margin-bottom:20px;position:relative;overflow:hidden}
+-.hero-glow{position:absolute;top:-80px;right:-80px;width:260px;height:260px;background:radial-gradient(circle,rgba(59,130,246,0.09) 0%,transparent 65%);pointer-events:none}
+-.hero-brand{font-size:11px;color:#374151;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px;font-weight:600}
+-.hero-model{font-size:28px;font-weight:800;margin-bottom:10px;letter-spacing:-0.5px;line-height:1.1}
++.hero-card{background:linear-gradient(145deg,#0e1420 0%,#090c14 100%);border:1px solid rgba(255,255,255,0.06);border-radius:28px;padding:22px 20px 18px;margin-bottom:20px;position:relative;overflow:hidden;min-height:280px}
++.hero-render-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 38%;opacity:.86;filter:saturate(1.05) contrast(1.02)}
++.hero-render-scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,10,15,.18) 0%,rgba(8,10,15,.22) 30%,rgba(8,10,15,.58) 64%,rgba(8,10,15,.96) 100%);pointer-events:none}
++.hero-card.has-render{background:#0b0f17}
++.hero-glow{position:absolute;top:-80px;right:-80px;width:260px;height:260px;background:radial-gradient(circle,rgba(59,130,246,0.16) 0%,transparent 65%);pointer-events:none;z-index:1}
++.hero-content{position:relative;z-index:2;display:flex;flex-direction:column;justify-content:flex-end;min-height:240px}
++.hero-render-badge{align-self:flex-start;margin-bottom:auto;padding:6px 10px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(8px)}
++.hero-render-badge.ready{background:rgba(15,23,42,.5);color:#e5edf9}
++.hero-render-badge.loading{background:rgba(37,99,235,.18);color:#bfdbfe}
++.hero-render-badge.error{background:rgba(239,68,68,.16);color:#fecaca}
++.hero-brand{font-size:11px;color:#8fa4c7;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px;font-weight:700}
++.hero-model{font-size:28px;font-weight:800;margin-bottom:10px;letter-spacing:-0.5px;line-height:1.1;text-shadow:0 10px 30px rgba(0,0,0,.28)}
+ .hero-chips{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:14px}
+-.hero-chip{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:6px;padding:3px 9px;font-size:12px;color:#4b5563;font-weight:500}
++.hero-chip{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:999px;padding:5px 10px;font-size:12px;color:#d7dfeb;font-weight:600;backdrop-filter:blur(8px)}
+ .hero-status-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+ 
+ /* Mileage inline editor */
+ .mileage-inline{display:flex;align-items:center;gap:6px}
+ .mileage-inline-input{background:transparent;border:none;outline:none;color:#f1f2f4;font-size:19px;font-weight:700;width:96px;padding:0;-moz-appearance:textfield}
+ .mileage-inline-input::-webkit-outer-spin-button,.mileage-inline-input::-webkit-inner-spin-button{-webkit-appearance:none}
+-.mileage-inline-unit{font-size:13px;color:#374151}
++.mileage-inline-unit{font-size:13px;color:#94a3b8}
+ .mileage-save-inline{background:#2563eb;border:none;border-radius:8px;padding:5px 10px;color:white;font-size:13px;font-weight:700;cursor:pointer;line-height:1}
+ 
+ /* Health pill */
+@@ -43,7 +51,7 @@
+ .health-pill.good .health-pill-fill{background:#10b981}
+ .health-pill.warn .health-pill-fill{background:#f59e0b}
+ .health-pill.bad .health-pill-fill{background:#ef4444}
+-.health-pill-label{font-size:13px;font-weight:600;color:#6b7280}
++.health-pill-label{font-size:13px;font-weight:600;color:#d7dfeb}
+ 
+ /* Status sentence */
+ .status-sentence{font-size:16px;color:#c9cdd6;line-height:1.6;margin-bottom:18px;padding:0 2px;font-weight:400}
+--- a/src/components/HomeScreen.jsx
++++ b/src/components/HomeScreen.jsx
+@@ -94,6 +94,8 @@
+   statusSentence,
+   primaryAction,
+   reminders,
++  vehicleRender,
++  isGeneratingRender,
+   isParsingDoc,
+   onScan,
+   onManualAdd,
+@@ -108,34 +110,49 @@
+     <div className="home-screen">
+ 
+       {/* Vehicle hero */}
+-      <div className="hero-card">
++      <div className={`hero-card ${vehicleRender?.imageUrl ? "has-render" : ""}`}>
++        {vehicleRender?.imageUrl && (
++          <img className="hero-render-image" src={vehicleRender.imageUrl} alt={`${vehicle.brand} ${vehicle.model}`} />
++        )}
++        <div className="hero-render-scrim" />
+         <div className="hero-glow" />
+-        <CarVisual vehicle={vehicle} />
+-        <div className="hero-brand">{vehicle.brand}</div>
+-        <div className="hero-model">{vehicle.model}</div>
+-        <div className="hero-chips">
+-          {[vehicle.year, vehicle.engine, vehicle.transmission, vehicle.drive]
+-            .filter(Boolean)
+-            .map((v) => <span className="hero-chip" key={v}>{v}</span>)}
+-        </div>
+-        <div className="hero-status-row">
+-          <div className="mileage-inline">
+-            <input
+-              className="mileage-inline-input"
+-              type="number"
+-              value={newMileage}
+-              onChange={(e) => setNewMileage(e.target.value)}
+-            />
+-            <span className="mileage-inline-unit">км</span>
+-            {Number(newMileage) !== Number(mileage) && (
+-              <button className="mileage-save-inline" onClick={saveMileage}>✓</button>
+-            )}
++        {!vehicleRender?.imageUrl && <CarVisual vehicle={vehicle} />}
++        <div className="hero-content">
++          {(isGeneratingRender || vehicleRender?.status === "loading") && (
++            <div className="hero-render-badge loading">AI-рендер создаётся…</div>
++          )}
++          {!isGeneratingRender && vehicleRender?.status === "ready" && vehicleRender?.imageUrl && (
++            <div className="hero-render-badge ready">AI render</div>
++          )}
++          {vehicleRender?.status === "error" && (
++            <div className="hero-render-badge error">Рендер не создан</div>
++          )}
++          <div className="hero-brand">{vehicle.brand}</div>
++          <div className="hero-model">{vehicle.model}</div>
++          <div className="hero-chips">
++            {[vehicle.year, vehicle.engine, vehicle.transmission, vehicle.drive, vehicle.color]
++              .filter(Boolean)
++              .map((v) => <span className="hero-chip" key={v}>{v}</span>)}
+           </div>
+-          <div className={`health-pill ${hc}`}>
+-            <span className="health-pill-bar">
+-              <span className="health-pill-fill" style={{ width: `${healthScore}%` }} />
+-            </span>
+-            <span className="health-pill-label">{healthScore}%</span>
++          <div className="hero-status-row">
++            <div className="mileage-inline">
++              <input
++                className="mileage-inline-input"
++                type="number"
++                value={newMileage}
++                onChange={(e) => setNewMileage(e.target.value)}
++              />
++              <span className="mileage-inline-unit">км</span>
++              {Number(newMileage) !== Number(mileage) && (
++                <button className="mileage-save-inline" onClick={saveMileage}>✓</button>
++              )}
++            </div>
++            <div className={`health-pill ${hc}`}>
++              <span className="health-pill-bar">
++                <span className="health-pill-fill" style={{ width: `${healthScore}%` }} />
++              </span>
++              <span className="health-pill-label">{healthScore}%</span>
++            </div>
+           </div>
+         </div>
+       </div>
+--- a/src/components/MoreScreen.jsx
++++ b/src/components/MoreScreen.jsx
+@@ -5,7 +5,7 @@
+ 
+ const STATUS_LABEL = { "Просрочено": "overdue", "Скоро": "soon", "Норма": "ok" };
+ 
+-export default function MoreScreen({ serviceRules, schedule, data, totalSpent, onReset, vehicle, onChangeVehicle, onClearChat, chatCount }) {
++export default function MoreScreen({ serviceRules, schedule, data, totalSpent, onReset, vehicle, onChangeVehicle, onRegenerateRender, isGeneratingRender, onClearChat, chatCount }) {
+   const [section, setSection] = useState("schedule");
+ 
+   return (
+@@ -81,6 +81,9 @@
+ 
+       {section === "settings" && (
+         <>
++          <button className="btn btn-gray" onClick={onRegenerateRender} disabled={isGeneratingRender} style={{ marginBottom: "10px" }}>
++            {isGeneratingRender ? "Генерирую AI-рендер..." : "Обновить AI-рендер"}
++          </button>
+           <button className="btn btn-gray" onClick={onChangeVehicle} style={{ marginBottom: "10px" }}>
+             Сменить автомобиль
+           </button>

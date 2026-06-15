@@ -94,6 +94,8 @@ export default function HomeScreen({
   statusSentence,
   primaryAction,
   reminders,
+  vehicleRender,
+  isGeneratingRender,
   isParsingDoc,
   onScan,
   onManualAdd,
@@ -108,34 +110,49 @@ export default function HomeScreen({
     <div className="home-screen">
 
       {/* Vehicle hero */}
-      <div className="hero-card">
+      <div className={`hero-card ${vehicleRender?.imageUrl ? "has-render" : ""}`}>
+        {vehicleRender?.imageUrl && (
+          <img className="hero-render-image" src={vehicleRender.imageUrl} alt={`${vehicle.brand} ${vehicle.model}`} />
+        )}
+        <div className="hero-render-scrim" />
         <div className="hero-glow" />
-        <CarVisual vehicle={vehicle} />
-        <div className="hero-brand">{vehicle.brand}</div>
-        <div className="hero-model">{vehicle.model}</div>
-        <div className="hero-chips">
-          {[vehicle.year, vehicle.engine, vehicle.transmission, vehicle.drive]
-            .filter(Boolean)
-            .map((v) => <span className="hero-chip" key={v}>{v}</span>)}
-        </div>
-        <div className="hero-status-row">
-          <div className="mileage-inline">
-            <input
-              className="mileage-inline-input"
-              type="number"
-              value={newMileage}
-              onChange={(e) => setNewMileage(e.target.value)}
-            />
-            <span className="mileage-inline-unit">км</span>
-            {Number(newMileage) !== Number(mileage) && (
-              <button className="mileage-save-inline" onClick={saveMileage}>✓</button>
-            )}
+        {!vehicleRender?.imageUrl && <CarVisual vehicle={vehicle} />}
+        <div className="hero-content">
+          {(isGeneratingRender || vehicleRender?.status === "loading") && (
+            <div className="hero-render-badge loading">AI-рендер создаётся…</div>
+          )}
+          {!isGeneratingRender && vehicleRender?.status === "ready" && vehicleRender?.imageUrl && (
+            <div className="hero-render-badge ready">AI render</div>
+          )}
+          {vehicleRender?.status === "error" && (
+            <div className="hero-render-badge error">Рендер не создан</div>
+          )}
+          <div className="hero-brand">{vehicle.brand}</div>
+          <div className="hero-model">{vehicle.model}</div>
+          <div className="hero-chips">
+            {[vehicle.year, vehicle.engine, vehicle.transmission, vehicle.drive, vehicle.color]
+              .filter(Boolean)
+              .map((v) => <span className="hero-chip" key={v}>{v}</span>)}
           </div>
-          <div className={`health-pill ${hc}`}>
-            <span className="health-pill-bar">
-              <span className="health-pill-fill" style={{ width: `${healthScore}%` }} />
-            </span>
-            <span className="health-pill-label">{healthScore}%</span>
+          <div className="hero-status-row">
+            <div className="mileage-inline">
+              <input
+                className="mileage-inline-input"
+                type="number"
+                value={newMileage}
+                onChange={(e) => setNewMileage(e.target.value)}
+              />
+              <span className="mileage-inline-unit">км</span>
+              {Number(newMileage) !== Number(mileage) && (
+                <button className="mileage-save-inline" onClick={saveMileage}>✓</button>
+              )}
+            </div>
+            <div className={`health-pill ${hc}`}>
+              <span className="health-pill-bar">
+                <span className="health-pill-fill" style={{ width: `${healthScore}%` }} />
+              </span>
+              <span className="health-pill-label">{healthScore}%</span>
+            </div>
           </div>
         </div>
       </div>
