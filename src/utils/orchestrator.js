@@ -166,7 +166,7 @@ function predictionAgent(schedule, monthlyKm) {
 }
 
 // ── AI status sentence (instant, no API) ──────────────────────────────────────
-function generateStatusSentence(vehicle, schedule, data, monthlyKm) {
+function generateStatusSentence(vehicle, schedule, data, monthlyKm, ownerProfile = {}) {
   const name = vehicle ? `${vehicle.brand} ${vehicle.model}` : "Автомобиль";
   const overdue = schedule.filter((s) => s.status === "Просрочено");
   const soon = schedule.filter((s) => s.status === "Скоро");
@@ -184,7 +184,8 @@ function generateStatusSentence(vehicle, schedule, data, monthlyKm) {
     return `${name}: одна позиция просрочена. Рекомендуется обслуживание.`;
   }
   if (!data?.logs?.length) {
-    return "История обслуживания не добавлена. Загрузите документы, чтобы AutoPulse начал следить за состоянием.";
+    if (historyMode.historyMode === "used-unknown") return `${name}: история обслуживания неизвестна. Зафиксируем новую точку отсчёта и начнём вести авто с текущего момента.`;
+    return `${name}: заполните быструю историю обслуживания, чтобы Motrix начал считать точнее.`;
   }
   if (critUnknown.length > 0 && soon.length === 0) {
     return `${name} в целом в порядке. Нет данных по ${critUnknown.length === 1 ? critUnknown[0].name.toLowerCase() : `${critUnknown.length} важным узлам`}.`;
@@ -454,7 +455,7 @@ export function computeOrchestratorState({ vehicle, profile, data, ownerProfile,
   const predictions  = predictionAgent(schedule, monthlyKm);
   const localBriefing = briefingAgent({ vehicle, schedule, data, ownerProfile, analysis, monthlyKm });
   const quickQuestions = quickQuestionsAgent(schedule, ownerProfile);
-  const statusSentence = generateStatusSentence(vehicle, schedule, data, monthlyKm);
+  const statusSentence = generateStatusSentence(vehicle, schedule, data, monthlyKm, ownerProfile);
 
   const urgentActions = [...schedule]
     .filter((i) => i.status === "Просрочено" || i.status === "Скоро")
