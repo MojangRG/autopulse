@@ -6,6 +6,7 @@ import { canonicalServiceId, CANONICAL_SERVICE_IDS, SERVICE_IDS } from "../src/u
 export const config = { api: { bodyParser: false } };
 
 function getOpenAI() {
+  if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is missing");
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: "https://api.aitunnel.ru/v1" });
 }
 
@@ -22,6 +23,37 @@ function fileToDataUrl(file) {
   return `data:${file.mimetype || "image/jpeg"};base64,${buffer.toString("base64")}`;
 }
 
+function safeParseAiJson(content, label = "AI response") {
+  const raw = String(content || "").trim();
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch (firstError) {
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(raw.slice(start, end + 1));
+      } catch {}
+    }
+    throw new Error(`${label}: не удалось разобрать JSON от AI`);
+  }
+}
+
+function safeParseRequestJson(value, fallback = {}) {
+  try {
+    return JSON.parse(value || JSON.stringify(fallback));
+  } catch {
+    return fallback;
+  }
+}
+
+function sendServerError(res, publicError, error) {
+  const payload = { error: publicError };
+  if (process.env.NODE_ENV !== "production") payload.details = error?.message || String(error);
+  return res.status(500).json(payload);
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -33,8 +65,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Пока поддерживаются только изображения. PDF подключим отдельно." });
     }
 
-    const vehicle = JSON.parse(getFieldValue(fields.vehicle) || "{}");
-    const profile = JSON.parse(getFieldValue(fields.profile) || "{}");
+    const vehicle = safeParseRequestJson(getFieldValue(fields.vehicle), {});
+    const profile = safeParseRequestJson(getFieldValue(fields.profile), {});
     const mileage = Number(getFieldValue(fields.mileage) || 0);
     const imageUrl = fileToDataUrl(uploadedFile);
     const openai = getOpenAI();
@@ -103,7 +135,7 @@ export default async function handler(req, res) {
       ],
     });
 
-    const parsed = JSON.parse(response.choices[0].message.content || "{}");
+    const parsed = safeParseAiJson(response.choices?.[0]?.message?.content, "service document parser");
     const logs = Array.isArray(parsed.logs)
       ? parsed.logs.map((log) => ({
           normalizedId: CANONICAL_SERVICE_IDS.includes(canonicalServiceId(log.normalizedId)) ? canonicalServiceId(log.normalizedId) : SERVICE_IDS.OTHER,
@@ -124,6 +156,6 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ error: "Failed to parse service document", details: error?.message || String(error) });
+    return sendServerError(res, "Не удалось распознать сервисный документ", error);
   }
 }

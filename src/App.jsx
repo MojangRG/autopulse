@@ -597,7 +597,7 @@ export default function App() {
       {profileOnboardingOpen && (
         <OnboardingProfile
           onSave={saveOwnerProfile}
-          onSkip={() => { setProfileOnboardingOpen(false); setTab("home"); setTimeout(() => analyzeVehicle(data, profile, vehicle, profileData), 300); }}
+          onSkip={() => { setProfileOnboardingOpen(false); setTab("home"); setTimeout(() => analyzeVehicle(data, profile, vehicle), 300); }}
         />
       )}
 
@@ -716,7 +716,6 @@ export default function App() {
           predictions={orch.predictions}
           totalSpent={orch.totalSpent}
           profile={profile}
-          analysis={analysis}
           ownerProfile={ownerProfile}
           logCount={orch.logCount}
           healthScore={orch.healthScore}
@@ -724,7 +723,7 @@ export default function App() {
           mileagePace={orch.mileagePace}
           mileagePaceData={orch.mileagePaceData}
           insights={orch.insights}
-          ownerProfile={ownerProfile}
+
         />
       )}
       {tab === "ai" && (

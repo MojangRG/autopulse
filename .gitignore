@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+# Local Motrix patch/audit scratch files
+*.bak*
+*.patch
+*_patch.sh
+motrix_*.sh

@@ -5,6 +5,7 @@ import OpenAI from "openai";
 export const config = { api: { bodyParser: false } };
 
 function getOpenAI() {
+  if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is missing");
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: "https://api.aitunnel.ru/v1" });
 }
 
@@ -18,6 +19,29 @@ function parseForm(req) {
 function fileToDataUrl(file) {
   const buffer = fs.readFileSync(file.filepath);
   return `data:${file.mimetype || "image/jpeg"};base64,${buffer.toString("base64")}`;
+}
+
+function safeParseAiJson(content, label = "AI response") {
+  const raw = String(content || "").trim();
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch (firstError) {
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(raw.slice(start, end + 1));
+      } catch {}
+    }
+    throw new Error(`${label}: не удалось разобрать JSON от AI`);
+  }
+}
+
+function sendServerError(res, publicError, error) {
+  const payload = { error: publicError };
+  if (process.env.NODE_ENV !== "production") payload.details = error?.message || String(error);
+  return res.status(500).json(payload);
 }
 
 function mockVinProvider(vin) {
@@ -79,7 +103,7 @@ export default async function handler(req, res) {
       ],
     });
 
-    const extracted = JSON.parse(response.choices[0].message.content || "{}");
+    const extracted = safeParseAiJson(response.choices?.[0]?.message?.content, "STS parser");
     const vehicle = {
       ...mockVinProvider(extracted.vin),
       color: extracted.color || mockVinProvider(extracted.vin).color || "",
@@ -88,6 +112,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ extracted, vehicle, profile: null });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ error: "Failed to parse STS", details: error?.message || String(error) });
+    return sendServerError(res, "Не удалось распознать СТС", error);
   }
 }
