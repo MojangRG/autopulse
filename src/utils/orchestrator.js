@@ -46,9 +46,60 @@ function learnMileagePace(data, declaredMonthlyKm) {
   return { monthlyKm: finalMonthlyKm > 0 ? finalMonthlyKm : declaredMonthlyKm, confidence, source: "history", learnedMonthlyKm, declaredMonthlyKm, daySpan: Math.round(daySpan) };
 }
 
-// ── Schedule agent ─────────────────────────────────────────────────────────────
-function scheduleAgent(serviceRules, data) {
+// ── Ownership questionnaire evidence ─────────────────────────────────────────
+function questionnaireDone(ownerProfile = {}) {
+  return Boolean(ownerProfile?.completedAt || ownerProfile?.source === "onboarding_questionnaire");
+}
+
+function softHistoryEvidence(ownerProfile = {}, data = {}) {
   const currentMileage = Number(data?.mileage || 0);
+  if (!questionnaireDone(ownerProfile) || currentMileage <= 0) return {};
+
+  const evidence = {};
+  const byOffset = (offsetKm) => Math.max(1, Math.round(currentMileage - Number(offsetKm || 0)));
+  const add = (id, payload) => { evidence[id] = { source: "questionnaire", confidence: "medium", ...payload }; };
+
+  // Engine service: one answer covers oil and oil filter. It is self-reported, not a scanned invoice.
+  const engine = ownerProfile.lastEngineService;
+  if (engine === "lt5") {
+    add("engine_oil", { lastMileage: byOffset(3000), label: "со слов: до 5 000 км" });
+    add("oil_filter", { lastMileage: byOffset(3000), label: "со слов: до 5 000 км" });
+  } else if (engine === "5to10") {
+    add("engine_oil", { lastMileage: byOffset(7500), label: "со слов: 5–10 тыс. км" });
+    add("oil_filter", { lastMileage: byOffset(7500), label: "со слов: 5–10 тыс. км" });
+  } else if (engine === "gt10") {
+    add("engine_oil", { lastMileage: byOffset(12000), label: "со слов: больше 10 тыс. км" });
+    add("oil_filter", { lastMileage: byOffset(12000), label: "со слов: больше 10 тыс. км" });
+  }
+
+  // Transmission / CVT / reducers. If user says "no", treat it as a planned overdue baseline, not as unknown history.
+  const transmission = ownerProfile.transmissionHistory;
+  if (transmission === "recent") {
+    add("cvt_fluid", { lastMileage: byOffset(20000), label: "со слов: недавно" });
+    add("diff_fluid", { lastMileage: byOffset(20000), label: "со слов: недавно" });
+  } else if (transmission === "old") {
+    add("cvt_fluid", { lastMileage: byOffset(52000), label: "со слов: давно" });
+    add("diff_fluid", { lastMileage: byOffset(52000), label: "со слов: давно" });
+  } else if (transmission === "no") {
+    add("cvt_fluid", { lastMileage: 0, nextMileage: 60000, statusOverride: "Просрочено", label: "со слов: не менялась" });
+    add("diff_fluid", { lastMileage: 0, nextMileage: 60000, statusOverride: "Просрочено", label: "со слов: не менялась" });
+  }
+
+  const brakeFluid = ownerProfile.brakeFluidHistory;
+  if (brakeFluid === "yes") {
+    add("brake_fluid", { lastMileage: byOffset(15000), label: "со слов: менялась за 2 года" });
+  } else if (brakeFluid === "no") {
+    add("brake_fluid", { lastMileage: 0, nextMileage: 40000, statusOverride: "Просрочено", label: "со слов: не менялась за 2 года" });
+  }
+
+  return evidence;
+}
+
+// ── Schedule agent ─────────────────────────────────────────────────────────────
+function scheduleAgent(serviceRules, data, ownerProfile = {}) {
+  const currentMileage = Number(data?.mileage || 0);
+  const softEvidence = softHistoryEvidence(ownerProfile, data);
+
   return serviceRules
     .map((rawRule) => {
       const ruleId = normalizeRuleId(rawRule);
@@ -57,17 +108,24 @@ function scheduleAgent(serviceRules, data) {
     .filter((r) => r.intervalKm || r.intervalMonths)
     .map((rule) => {
       const matchedLogs = (data?.logs || []).filter((log) => logMatchesRule(log, rule.id));
+      const soft = matchedLogs.length ? null : softEvidence[rule.id];
       const lastMileage = matchedLogs.length
         ? Math.max(...matchedLogs.map((l) => Number(l.mileage || 0)))
-        : 0;
+        : Number(soft?.lastMileage || 0);
+
       const intervalKm = Number(rule.intervalKm || 0);
-      const nextMileage = intervalKm > 0 && lastMileage > 0 ? lastMileage + intervalKm : null;
+      const nextMileage = soft?.nextMileage != null
+        ? Number(soft.nextMileage)
+        : (intervalKm > 0 && lastMileage > 0 ? lastMileage + intervalKm : null);
       const left = nextMileage != null ? nextMileage - currentMileage : null;
+
       let status = "Норма";
-      if (lastMileage === 0) status = "Нет данных";
+      if (soft?.statusOverride) status = soft.statusOverride;
+      else if (lastMileage === 0) status = "Нет данных";
       else if (left != null && left <= 0) status = "Просрочено";
       else if (left != null && left <= Number(rule.warningBeforeKm || 2000)) status = "Скоро";
-      // Time-based override: if intervalMonths defined and we have a date, compute deadline
+
+      // Time-based override: if intervalMonths defined and we have a date, compute deadline.
       let timeStatus = null;
       if (rule.intervalMonths && matchedLogs.length > 0) {
         const lastLog = matchedLogs.reduce((a, b) => (new Date(b.datePerformed || b.dateAdded || 0) > new Date(a.datePerformed || a.dateAdded || 0) ? b : a));
@@ -81,11 +139,21 @@ function scheduleAgent(serviceRules, data) {
           else if (monthsLeft <= 2) timeStatus = "Скоро";
         }
       }
-      // If time-based is more urgent than km-based, escalate
+
       const finalStatus = (timeStatus === "Просрочено" && status !== "Просрочено") ? "Просрочено"
         : (timeStatus === "Скоро" && status === "Норма") ? "Скоро"
         : status;
-      return { ...rule, lastMileage, nextMileage: nextMileage || 0, left: left ?? 0, status: finalStatus };
+
+      return {
+        ...rule,
+        lastMileage,
+        nextMileage: nextMileage || 0,
+        left: left ?? 0,
+        status: finalStatus,
+        lastSource: matchedLogs.length ? "journal" : (soft ? "questionnaire" : "none"),
+        lastEvidenceLabel: soft?.label || "",
+        lastConfidence: soft?.confidence || (matchedLogs.length ? "high" : "low"),
+      };
     });
 }
 
@@ -185,6 +253,7 @@ function generateStatusSentence(vehicle, schedule, data, monthlyKm, ownerProfile
   }
   if (!data?.logs?.length) {
     if (historyMode.historyMode === "used-unknown") return `${name}: история обслуживания неизвестна. Зафиксируем новую точку отсчёта и начнём вести авто с текущего момента.`;
+    if (questionnaireDone(ownerProfile)) return `${name}: быстрая история принята. Motrix строит план по анкете и пробегу.`;
     return `${name}: заполните быструю историю обслуживания, чтобы Motrix начал считать точнее.`;
   }
   if (critUnknown.length > 0 && soon.length === 0) {
@@ -225,23 +294,25 @@ function primaryActionAgent(schedule, urgentActions, unknownAreas, data, mileage
   const currentMileage = Number(mileage || 0);
   const { historyMode, knowledge } = getHistoryMode(ownerProfile);
   const hasLogs = Boolean(data?.logs?.length);
+  const hasQuestionnaire = questionnaireDone(ownerProfile);
 
   // 1. If the car has no journal yet, do not pretend every unknown service item is a separate defect.
   // First ask for ownership/history context. For a used car with unknown past, switch to baseline inspection mode.
-  if (!hasLogs) {
-    if (historyMode === "used-unknown" || knowledge === "none") {
-      return {
-        type: "used_unknown",
-        severity: "high",
-        title: "Б/у авто без истории",
-        why: {
-          reason: "История обслуживания неизвестна. Motrix будет рекомендовать базовую диагностику и нулевое ТО, а не делать вид, что знает прошлые замены.",
-        },
-      };
-    }
+  if (!hasLogs && (historyMode === "used-unknown" || knowledge === "none")) {
+    return {
+      type: "used_unknown",
+      severity: "high",
+      title: "Б/у авто без истории",
+      why: {
+        reason: "История обслуживания неизвестна. Motrix будет рекомендовать базовую диагностику и нулевое ТО, а не делать вид, что знает прошлые замены.",
+      },
+    };
+  }
+
+  if (!hasLogs && !hasQuestionnaire) {
     return historyQuestionnaireAction(
       "Заполните быструю историю",
-      "Вы указали, что история известна или частично известна. Ответьте на несколько вопросов, чтобы Motrix не показывал ложные 'нет данных'."
+      "Ответьте на несколько вопросов, чтобы Motrix начал считать обслуживание по вашей реальной ситуации, а не по пустому журналу."
     );
   }
 
@@ -294,10 +365,12 @@ function primaryActionAgent(schedule, urgentActions, unknownAreas, data, mileage
         },
       };
     }
-    return historyQuestionnaireAction(
-      "Уточните историю обслуживания",
-      `История есть, но Motrix не знает детали по важным узлам: ${criticalUnknowns.slice(0, 3).map((i) => i.name.toLowerCase()).join(", ")}. Заполните короткую анкету или добавьте документы.`
-    );
+    if (!hasQuestionnaire) {
+      return historyQuestionnaireAction(
+        "Уточните историю обслуживания",
+        `История есть, но Motrix не знает детали по важным узлам: ${criticalUnknowns.slice(0, 3).map((i) => i.name.toLowerCase()).join(", ")}. Заполните короткую анкету или добавьте документы.`
+      );
+    }
   }
 
   // 5. Coming soon (high severity)
@@ -347,6 +420,8 @@ function briefingAgent({ vehicle, schedule, data, ownerProfile, analysis, monthl
 
   if (!data?.logs?.length && historyMode.historyMode === "used-unknown") {
     parts.push(`${name}: история обслуживания неизвестна. Рекомендуется базовая диагностика и нулевое ТО.`);
+  } else if (!data?.logs?.length && questionnaireDone(ownerProfile)) {
+    parts.push(`${name}: анкета принята. План обслуживания построен по пробегу и ответам владельца.`);
   } else if (!data?.logs?.length) {
     parts.push(`${name}: заполните быструю историю обслуживания, чтобы Motrix начал считать точнее.`);
   } else if (overdue.length > 0) {
@@ -448,7 +523,7 @@ export function computeOrchestratorState({ vehicle, profile, data, ownerProfile,
   const mileagePaceData = learnMileagePace(data, declaredMonthlyKm);
   const monthlyKm = mileagePaceData.monthlyKm;
 
-  const schedule     = scheduleAgent(serviceRules, data);
+  const schedule     = scheduleAgent(serviceRules, data, ownerProfile);
   const healthScore  = healthAgent(schedule);
   const costForecast = costAgent(schedule, monthlyKm);
   const { lastService, totalSpent, logCount } = historyAgent(data);

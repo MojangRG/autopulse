@@ -308,6 +308,13 @@ export default function HomeScreen({
   const highCount = problems.filter((p) => problemTone(p) === "high").length;
   const mediumCount = problems.filter((p) => problemTone(p) === "medium").length;
   const nextItem = upcomingItems?.[0];
+  const isSetupPrompt = problems.length === 1 && ["history_questionnaire", "used_unknown"].includes(problems[0]?.type);
+  const priorityTitle = isSetupPrompt
+    ? problemName(problems[0])
+    : (problems.length ? `${problems.length} ${problems.length === 1 ? "проблема" : "проблемы"}` : "Всё спокойно");
+  const prioritySubtitle = isSetupPrompt
+    ? problemShort(problems[0])
+    : (problems.length ? `${highCount} срочно · ${mediumCount} важно` : statusSentence || "Регламент выглядит нормально");
   const vehicleWithMileage = { ...vehicle, mileage };
 
   function openProblem(problem) {
@@ -363,8 +370,8 @@ export default function HomeScreen({
 
       <button className={`mx-priority-tile ${problems.length ? "attention" : "calm"}`} onClick={() => setSheet("problems")}>
         <span className="mx-priority-kicker">AI-приоритеты</span>
-        <strong>{problems.length ? `${problems.length} ${problems.length === 1 ? "проблема" : "проблемы"}` : "Всё спокойно"}</strong>
-        <small>{problems.length ? `${highCount} срочно · ${mediumCount} важно` : statusSentence || "Регламент выглядит нормально"}</small>
+        <strong>{priorityTitle}</strong>
+        <small>{prioritySubtitle}</small>
         <span className="mx-chevron">›</span>
       </button>
 

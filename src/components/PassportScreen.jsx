@@ -1,35 +1,54 @@
+import { useMemo, useState } from "react";
+
 function km(v) { return Number(v || 0).toLocaleString("ru-RU") + " км"; }
 function rub(v) { return Number(v || 0).toLocaleString("ru-RU") + " ₽"; }
 
 const SYSTEMS = [
-  { id: "engine",     name: "Двигатель",        ruleIds: ["engine_oil", "oil_filter", "air_filter", "spark_plugs"] },
-  { id: "drivetrain", name: "Трансмиссия",       ruleIds: ["cvt_fluid", "diff_fluid"] },
-  { id: "brakes",     name: "Тормоза",           ruleIds: ["brake_fluid", "front_pads", "front_discs", "rear_pads", "rear_discs"] },
-  { id: "fuel",       name: "Топливная система", ruleIds: ["fuel_cleaning"] },
-  { id: "suspension", name: "Подвеска",          ruleIds: ["suspension_check"] },
+  { id: "engine", name: "Двигатель", note: "масло · фильтры · свечи", ruleIds: ["engine_oil", "oil_filter", "air_filter", "spark_plugs"] },
+  { id: "drivetrain", name: "Трансмиссия", note: "CVT · редукторы", ruleIds: ["cvt_fluid", "diff_fluid"] },
+  { id: "brakes", name: "Тормоза", note: "жидкость · диски · колодки", ruleIds: ["brake_fluid", "front_pads", "front_discs", "rear_pads", "rear_discs"] },
+  { id: "comfort", name: "Комфорт", note: "салон · воздух", ruleIds: ["cabin_filter"] },
 ];
 
-function systemHealth(ruleIds, schedule) {
-  const items = schedule.filter((s) => ruleIds.includes(s.id));
-  if (!items.length) return { status: "unknown", label: "Нет данных", detail: "Не в регламенте" };
-  const overdue = items.filter((i) => i.status === "Просрочено");
-  const soon = items.filter((i) => i.status === "Скоро");
-  const withHistory = items.filter((i) => i.lastMileage > 0);
-  if (overdue.length) return { status: "due", label: "Просрочено", detail: overdue[0].name };
-  if (soon.length) {
-    const n = soon.sort((a, b) => a.left - b.left)[0];
-    return { status: "watch", label: "Скоро", detail: `${n.name} — ${n.left.toLocaleString("ru-RU")} км` };
-  }
-  if (withHistory.length) {
-    const last = withHistory.sort((a, b) => b.lastMileage - a.lastMileage)[0];
-    return { status: "good", label: "В норме", detail: `Обслужено ${km(last.lastMileage)}` };
-  }
-  return { status: "unknown", label: "Нет данных", detail: "Нет записей в журнале" };
+function historyModeText(ownerProfile) {
+  if (!ownerProfile) return "Анкета не заполнена";
+  if (ownerProfile.historyMode === "used-unknown") return "Б/у без истории";
+  if (ownerProfile.firstOwner === "yes") return "Первый владелец";
+  if (ownerProfile.historyKnowledge === "partial") return "История частичная";
+  if (ownerProfile.historyKnowledge === "full") return "История известна";
+  return "Профиль владельца";
 }
 
-function coveragePercent(schedule) {
-  if (!schedule.length) return 0;
-  return Math.round((schedule.filter((s) => s.lastMileage > 0).length / schedule.length) * 100);
+function sourceText(item) {
+  if (item.lastSource === "journal") return `журнал · ${km(item.lastMileage)}`;
+  if (item.lastSource === "questionnaire") return item.lastEvidenceLabel || `анкета · ${km(item.lastMileage)}`;
+  return "не уточнено";
+}
+
+function systemState(ruleIds, schedule) {
+  const items = schedule.filter((s) => ruleIds.includes(s.id));
+  const overdue = items.filter((i) => i.status === "Просрочено");
+  const soon = items.filter((i) => i.status === "Скоро");
+  const known = items.filter((i) => i.lastSource === "journal" || i.lastSource === "questionnaire");
+  if (overdue.length) return { tone: "bad", title: "Внимание", detail: overdue[0].name };
+  if (soon.length) return { tone: "warn", title: "Скоро", detail: soon[0].name };
+  if (known.length) return { tone: "good", title: "Учтено", detail: sourceText(known[0]) };
+  return { tone: "neutral", title: "Уточнить", detail: "нет анкеты или документа" };
+}
+
+function Sheet({ title, subtitle, children, onClose }) {
+  return (
+    <div className="mx-sheet-backdrop" onClick={onClose}>
+      <div className="mx-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="mx-sheet-handle" />
+        <div className="mx-sheet-head">
+          <div><h3>{title}</h3>{subtitle && <p>{subtitle}</p>}</div>
+          <button className="mx-sheet-close" onClick={onClose}>×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
 }
 
 export default function PassportScreen({
@@ -43,207 +62,132 @@ export default function PassportScreen({
   healthScore,
   costForecast,
   mileagePace,
-  mileagePaceData,
   insights,
+  ownerProfile,
 }) {
-  const coverage = coveragePercent(schedule);
-  const gaps = schedule.filter((i) => i.lastMileage === 0);
-  const overdue = schedule.filter((i) => i.status === "Просрочено");
-  const soon = schedule.filter((i) => i.status === "Скоро");
+  const [sheet, setSheet] = useState(null);
+  const [selectedSystem, setSelectedSystem] = useState(null);
 
-  const vehicleFields = [
-    ["Марка", vehicle.brand],
-    ["Модель", vehicle.model],
-    ["Поколение", vehicle.generation],
-    ["Год", vehicle.year],
-    ["Двигатель", vehicle.engine],
-    ["Коробка", vehicle.transmission],
-    ["Привод", vehicle.drive],
-    ["Рынок", vehicle.market],
-  ].filter(([, v]) => v);
+  const systems = useMemo(() => SYSTEMS.map((sys) => ({ ...sys, state: systemState(sys.ruleIds, schedule) })), [schedule]);
+  const knownCount = schedule.filter((s) => s.lastSource === "journal" || s.lastSource === "questionnaire").length;
+  const totalCount = schedule.length || 1;
+  const coverage = Math.round((knownCount / totalCount) * 100);
+  const nextSpend = costForecast?.next6Months || 0;
+  const mainSummary = ownerProfile?.historyMode === "used-unknown"
+    ? "История прошлого неизвестна. Паспорт строится от новой точки отсчёта."
+    : ownerProfile?.completedAt
+      ? "Анкета принята. Паспорт использует журнал и ответы владельца."
+      : "Заполните быструю историю, чтобы паспорт стал точнее.";
+
+  function openSystem(sys) {
+    setSelectedSystem(sys);
+    setSheet("system");
+  }
+
+  const selectedItems = selectedSystem ? schedule.filter((s) => selectedSystem.ruleIds.includes(s.id)) : [];
 
   return (
-    <>
-      <h2 className="screen-title">Паспорт</h2>
-      <div className="passport">
-
-        {/* A. Identity */}
-        <div className="passport-id-card">
-          <div className="passport-id-glow" />
-          <div className="passport-label-tag">AutoPulse · Vehicle Passport</div>
-          {vehicle.vin && <div className="passport-vin">VIN: {vehicle.vin}</div>}
-          <div className="passport-car-name">{vehicle.brand} {vehicle.model}</div>
-          <div className="passport-car-spec">
-            {[vehicle.year, vehicle.engine, vehicle.transmission, vehicle.drive].filter(Boolean).join(" · ")}
-          </div>
-          <div className="passport-chips">
-            <span className="passport-chip neutral">{coverage}% истории</span>
-            {overdue.length > 0 && <span className="passport-chip overdue">{overdue.length} просрочено</span>}
-            {soon.length > 0 && <span className="passport-chip soon">{soon.length} скоро</span>}
-            {overdue.length === 0 && soon.length === 0 && <span className="passport-chip ok">В норме</span>}
-          </div>
-        </div>
-
-        {/* Overview stats */}
-        <div className="passport-stats-row">
-          <div className="passport-stat">
-            <div className={`passport-stat-value health-${healthScore >= 80 ? "good" : healthScore >= 55 ? "warn" : "bad"}`}>{healthScore}%</div>
-            <div className="passport-stat-label">Состояние</div>
-          </div>
-          <div className="passport-stat">
-            <div className="passport-stat-value">{logCount}</div>
-            <div className="passport-stat-label">Записей</div>
-          </div>
-          <div className="passport-stat">
-            <div className="passport-stat-value green">{totalSpent > 0 ? rub(totalSpent) : "—"}</div>
-            <div className="passport-stat-label">Потрачено</div>
-          </div>
-        </div>
-
-        {/* B. Vehicle Health — System status */}
-        <div className="passport-section-title">Состояние систем</div>
-        <div className="system-list">
-          {SYSTEMS.map((sys) => {
-            const h = systemHealth(sys.ruleIds, schedule);
-            return (
-              <div className="system-row" key={sys.id}>
-                <div className="system-info">
-                  <div className="system-name">{sys.name}</div>
-                  <div className="system-detail">{h.detail}</div>
-                </div>
-                <span className={`system-badge ${h.status}`}>{h.label}</span>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* C. Predictions */}
-        {predictions?.length > 0 && (
-          <>
-            <div className="passport-section-title">Прогноз</div>
-            <div className="passport-prediction-list">
-              {predictions.map((p) => (
-                <div className="passport-pred-item" key={p.id}>
-                  <span className={`passport-pred-dot ${p.type}`} />
-                  <span className="passport-pred-text">{p.text}</span>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {/* D. Unknown Areas */}
-        {gaps.length > 0 && (
-          <>
-            <div className="passport-section-title">Неизвестные зоны</div>
-            <div className="gap-list">
-              {gaps.map((item) => (
-                <div className="gap-row" key={item.id}>
-                  <span className="gap-circle" />
-                  <span className="gap-text">{item.name}</span>
-                  <span className={`gap-badge ${item.severity}`}>
-                    {item.severity === "high" ? "критично" : "нет данных"}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {/* E. AI Recommendations */}
-        {analysis?.topPriorities?.length > 0 && (
-          <>
-            <div className="passport-section-title">Рекомендации AI</div>
-            <div className="ai-priority-list">
-              {analysis.topPriorities.map((p, i) => (
-                <div className="ai-priority-row" key={i}>
-                  <div className="ai-priority-row-header">
-                    <div className="ai-priority-row-title">{p.title}</div>
-                    <span className={`rule-badge ${p.severity}`}>
-                      {p.severity === "high" ? "Важно" : p.severity === "low" ? "Низкий" : "Средний"}
-                    </span>
-                  </div>
-                  <div className="ai-priority-row-action">{p.action}</div>
-                  {p.dataStatus && (
-                    <div className="ai-data-status">
-                      {p.dataStatus === "confirmed" && "✓ подтверждено записями"}
-                      {p.dataStatus === "no-data" && "? нет данных"}
-                      {p.dataStatus === "predicted" && "~ прогноз"}
-                      {p.dataStatus === "overdue" && "● просрочено"}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {/* F. Service History Coverage */}
-        <div className="passport-section-title">Покрытие истории</div>
-        <div className="coverage-card">
-          <div className="coverage-bar-wrap">
-            <div className="coverage-bar-fill" style={{ width: `${coverage}%` }} />
-          </div>
-          <div className="coverage-row">
-            <span className="coverage-label">{coverage}% регламентных позиций подтверждено</span>
-            <span className="coverage-count">{schedule.filter(s => s.lastMileage > 0).length}/{schedule.length}</span>
-          </div>
-          {gaps.length > 0 && (
-            <div className="coverage-missing">
-              Нет данных: {gaps.slice(0, 3).map(g => g.name).join(", ")}
-              {gaps.length > 3 && ` и ещё ${gaps.length - 3}`}
-            </div>
-          )}
-        </div>
-
-        {/* Cost forecast */}
-        {mileagePace > 0 && (costForecast?.next6Months > 0 || costForecast?.nextYear > 0) && (
-          <>
-            <div className="passport-section-title">Прогноз расходов</div>
-            <div className="cost-grid" style={{ marginBottom: 16 }}>
-              <div className="cost-col">
-                <div className="cost-period">Месяц</div>
-                <div className="cost-value">{costForecast.nextMonth > 0 ? rub(costForecast.nextMonth) : "—"}</div>
-              </div>
-              <div className="cost-col">
-                <div className="cost-period">6 месяцев</div>
-                <div className="cost-value">{costForecast.next6Months > 0 ? rub(costForecast.next6Months) : "—"}</div>
-              </div>
-              <div className="cost-col">
-                <div className="cost-period">Год</div>
-                <div className="cost-value">{costForecast.nextYear > 0 ? rub(costForecast.nextYear) : "—"}</div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* G. Ownership Insights */}
-        {insights?.length > 0 && (
-          <>
-            <div className="passport-section-title">Аналитика владения</div>
-            <div className="insight-list">
-              {insights.map((ins, i) => (
-                <div className="insight-row" key={i}>
-                  <span className={`insight-dot ${ins.type}`} />
-                  <span className="insight-text">{ins.text}</span>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {/* Vehicle details */}
-        <div className="passport-section-title">Характеристики</div>
-        <div className="detail-list">
-          {vehicleFields.map(([key, val]) => (
-            <div className="detail-row" key={key}>
-              <span className="detail-key">{key}</span>
-              <span className="detail-val">{String(val)}</span>
-            </div>
-          ))}
-        </div>
-
+    <div className="mx-page mx-passport-page">
+      <div className="mx-page-head">
+        <span>MOTRIX PASSPORT</span>
+        <h2>Паспорт</h2>
+        <p>{vehicle.brand} {vehicle.model} · {historyModeText(ownerProfile)}</p>
       </div>
-    </>
+
+      <button className="mx-passport-hero" onClick={() => setSheet("identity")}>
+        <span className="mx-passport-kicker">Vehicle card</span>
+        <strong>{vehicle.brand} {vehicle.model}</strong>
+        <small>{[vehicle.year, vehicle.engine, vehicle.transmission, vehicle.drive].filter(Boolean).join(" · ")}</small>
+        <em>{mainSummary}</em>
+      </button>
+
+      <div className="mx-action-grid three mx-passport-stats">
+        <button className="mx-mini-card" onClick={() => setSheet("health")}><span>Индекс</span><strong>{healthScore}%</strong><small>состояние</small></button>
+        <button className="mx-mini-card" onClick={() => setSheet("coverage")}><span>Покрытие</span><strong>{coverage}%</strong><small>журнал + анкета</small></button>
+        <button className="mx-mini-card" onClick={() => setSheet("costs")}><span>Расходы</span><strong>{nextSpend ? rub(nextSpend) : "—"}</strong><small>6 месяцев</small></button>
+      </div>
+
+      <div className="mx-section-label">Системы</div>
+      <div className="mx-system-grid">
+        {systems.map((sys) => (
+          <button key={sys.id} className={`mx-system-card ${sys.state.tone}`} onClick={() => openSystem(sys)}>
+            <span>{sys.name}</span>
+            <strong>{sys.state.title}</strong>
+            <small>{sys.state.detail}</small>
+          </button>
+        ))}
+      </div>
+
+      <button className="mx-dossier-card" onClick={() => setSheet("dossier")}>
+        <span>AI-досье</span>
+        <strong>Сводка по автомобилю</strong>
+        <small>регламент · риски · план владения</small>
+        <b>›</b>
+      </button>
+
+      {sheet === "identity" && (
+        <Sheet title="Карточка автомобиля" subtitle="Паспорт машины без текстовой свалки" onClose={() => setSheet(null)}>
+          <div className="mx-bank-list">
+            {[
+              ["VIN", vehicle.vin || "не указан"],
+              ["Год", vehicle.year || "—"],
+              ["Двигатель", vehicle.engine || "—"],
+              ["Коробка", vehicle.transmission || "—"],
+              ["Привод", vehicle.drive || "—"],
+              ["Цвет", vehicle.color || "—"],
+              ["История", historyModeText(ownerProfile)],
+            ].map(([k, v]) => <div className="mx-bank-row static" key={k}><span><b>{k}</b><small>{v}</small></span><strong>›</strong></div>)}
+          </div>
+        </Sheet>
+      )}
+
+      {sheet === "system" && selectedSystem && (
+        <Sheet title={selectedSystem.name} subtitle={selectedSystem.note} onClose={() => setSheet(null)}>
+          <div className="mx-bank-list">
+            {selectedItems.map((item) => (
+              <div className="mx-bank-row static" key={item.id}>
+                <span><b>{item.name}</b><small>{sourceText(item)}{item.left > 0 ? ` · осталось ${km(item.left)}` : ""}</small></span>
+                <strong>{item.status === "Норма" ? "OK" : item.status}</strong>
+              </div>
+            ))}
+          </div>
+        </Sheet>
+      )}
+
+      {sheet === "coverage" && (
+        <Sheet title="Покрытие истории" subtitle="Motrix различает документы, анкету и пустые зоны" onClose={() => setSheet(null)}>
+          <div className="mx-coverage-big"><strong>{coverage}%</strong><span>{knownCount}/{schedule.length} позиций имеют основание</span></div>
+          <div className="mx-bank-list">
+            <div className="mx-bank-row static"><span><b>Журнал</b><small>{logCount} записей</small></span><strong>{logCount}</strong></div>
+            <div className="mx-bank-row static"><span><b>Анкета</b><small>{ownerProfile?.completedAt ? "заполнена" : "не заполнена"}</small></span><strong>{ownerProfile?.completedAt ? "OK" : "—"}</strong></div>
+          </div>
+        </Sheet>
+      )}
+
+      {sheet === "health" && (
+        <Sheet title="Индекс Motrix" subtitle="Сводный сигнал, а не диагноз" onClose={() => setSheet(null)}>
+          <div className="mx-health-big">{healthScore}%</div>
+          <p className="mx-detail-text">Индекс учитывает пробег, регламент, подтверждённые записи и ответы анкеты. Чем больше документов, тем точнее расчёт.</p>
+        </Sheet>
+      )}
+
+      {sheet === "costs" && (
+        <Sheet title="Прогноз расходов" subtitle="Строится по пробегу и регламенту" onClose={() => setSheet(null)}>
+          <div className="mx-forecast-grid"><div><span>Месяц</span><b>{costForecast?.nextMonth ? rub(costForecast.nextMonth) : "—"}</b></div><div><span>6 месяцев</span><b>{costForecast?.next6Months ? rub(costForecast.next6Months) : "—"}</b></div><div><span>Год</span><b>{costForecast?.nextYear ? rub(costForecast.nextYear) : "—"}</b></div></div>
+          <p className="mx-fineprint">Темп: {mileagePace ? km(mileagePace) + "/мес" : "не указан"}. После документов прогноз станет точнее.</p>
+        </Sheet>
+      )}
+
+      {sheet === "dossier" && (
+        <Sheet title="AI-досье" subtitle="Короткий документ по текущему профилю" onClose={() => setSheet(null)}>
+          <div className="mx-dossier-text">
+            <h4>{vehicle.brand} {vehicle.model}: сервисный профиль</h4>
+            <p>Motrix видит {serviceRules?.length || schedule.length} регламентных позиций. Для текущего пробега главный смысл паспорта: не показывать пустые строки, а отделять подтверждённые данные от ответов владельца и неизвестных зон.</p>
+            <p>{mainSummary}</p>
+            {analysis?.topPriorities?.slice(0, 2).map((p, i) => <p key={i}><b>{p.title}.</b> {p.action || p.reason || "Проверьте в журнале и регламенте."}</p>)}
+          </div>
+        </Sheet>
+      )}
+    </div>
   );
 }

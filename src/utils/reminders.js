@@ -15,6 +15,8 @@ export function generateReminders({ schedule, data, ownerProfile }) {
   const now = new Date().toISOString();
   const candidates = [];
   const monthlyKm = resolveMonthlyKm(ownerProfile);
+  const questionnaireDone = Boolean(ownerProfile?.completedAt || ownerProfile?.source === "onboarding_questionnaire");
+  const usedUnknown = ownerProfile?.historyMode === "used-unknown" || ownerProfile?.historyKnowledge === "none";
 
   for (const item of (schedule || [])) {
     if (item.status === "Просрочено") {
@@ -34,7 +36,7 @@ export function generateReminders({ schedule, data, ownerProfile }) {
       });
     }
 
-    if (item.lastMileage === 0 && item.severity === "high") {
+    if (item.lastMileage === 0 && item.severity === "high" && !questionnaireDone && !usedUnknown) {
       candidates.push({
         id: `gap_${item.id}`,
         title: `Нет данных: ${item.name}`,
@@ -82,10 +84,7 @@ export function generateReminders({ schedule, data, ownerProfile }) {
     return c;
   });
 
-  for (const e of existing) {
-    if (!merged.find((m) => m.id === e.id)) merged.push(e);
-  }
-
+  // Do not keep stale reminders from older logic. If a candidate disappeared, it is obsolete.
   saveReminders(merged);
   return merged;
 }

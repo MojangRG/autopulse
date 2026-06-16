@@ -233,7 +233,7 @@ export default function App() {
   }
 
   // ── API: analyze vehicle ──────────────────────────────────────────────────
-  async function analyzeVehicle(customData = data, customProfile = profile, customVehicle = vehicle) {
+  async function analyzeVehicle(customData = data, customProfile = profile, customVehicle = vehicle, customOwnerProfile = ownerProfile) {
     if (!customVehicle || !customProfile || !customData) return;
     try {
       setIsAnalyzing(true);
@@ -246,7 +246,7 @@ export default function App() {
       const response = await fetch("/api/analyze-vehicle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vehicle: customVehicle, profile: customProfile, data: customData, ownerProfile, orchestratorSummary: orchSummary }),
+        body: JSON.stringify({ vehicle: customVehicle, profile: customProfile, data: customData, ownerProfile: customOwnerProfile, orchestratorSummary: orchSummary }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.details || result.error || "Analysis failed");
@@ -424,7 +424,7 @@ export default function App() {
     localStorage.setItem("autopulse-owner-profile", JSON.stringify(profileData));
     setProfileOnboardingOpen(false);
     setTab("home");
-    setTimeout(() => analyzeVehicle(), 300);
+    setTimeout(() => analyzeVehicle(data, profile, vehicle, profileData), 300);
   }
 
   function saveVehicleManually(formOverride = null) {
@@ -597,7 +597,7 @@ export default function App() {
       {profileOnboardingOpen && (
         <OnboardingProfile
           onSave={saveOwnerProfile}
-          onSkip={() => { setProfileOnboardingOpen(false); setTab("home"); setTimeout(() => analyzeVehicle(), 300); }}
+          onSkip={() => { setProfileOnboardingOpen(false); setTab("home"); setTimeout(() => analyzeVehicle(data, profile, vehicle, profileData), 300); }}
         />
       )}
 
@@ -715,12 +715,16 @@ export default function App() {
           serviceRules={orch.serviceRules}
           predictions={orch.predictions}
           totalSpent={orch.totalSpent}
+          profile={profile}
+          analysis={analysis}
+          ownerProfile={ownerProfile}
           logCount={orch.logCount}
           healthScore={orch.healthScore}
           costForecast={orch.costForecast}
           mileagePace={orch.mileagePace}
           mileagePaceData={orch.mileagePaceData}
           insights={orch.insights}
+          ownerProfile={ownerProfile}
         />
       )}
       {tab === "ai" && (
@@ -743,6 +747,9 @@ export default function App() {
           schedule={orch.schedule}
           data={data}
           totalSpent={orch.totalSpent}
+          profile={profile}
+          analysis={analysis}
+          ownerProfile={ownerProfile}
           onReset={resetData}
           vehicle={vehicle}
           onChangeVehicle={changeVehicle}
