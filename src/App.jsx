@@ -6,6 +6,8 @@ import PassportScreen from "./components/PassportScreen";
 import AiScreen from "./components/AiScreen";
 import MoreScreen from "./components/MoreScreen";
 import OnboardingProfile from "./components/OnboardingProfile";
+import WelcomeScreen from "./components/WelcomeScreen";
+import { sanitizeVehicleForm, validateVehicleForm } from "./vehicleCatalog.js";
 import { computeOrchestratorState } from "./utils/orchestrator.js";
 import { generateReminders, dismissReminder, doneReminder, getActiveReminders } from "./utils/reminders.js";
 import "./App.css";
@@ -40,14 +42,25 @@ const DEFAULT_RULES = [
   { id: "brake_fluid",  name: "Тормозная жидкость", intervalKm: 40000, warningBeforeKm: 5000,  severity: "high",   intervalMonths: 24, notes: "Также контролировать по сроку 2 года." },
 ];
 
-const defaultData = {
-  mileage: 86000,
-  logs: [
-    { id: 1, normalizedId: "engine_service", title: "ТО двигателя",                      mileage: 82000, cost: 0, datePerformed: "2025-10-15", dateAdded: "2026-06-12", note: "Масло, масляный фильтр, салонный фильтр, тормозная жидкость", source: "manual" },
-    { id: 2, normalizedId: "fuel_cleaning",  title: "Чистка топливной системы",           mileage: 72000, cost: 0, datePerformed: "2024-09-20", dateAdded: "2026-06-12", note: "", source: "manual" },
-    { id: 3, normalizedId: "front_discs",    title: "Передние тормозные диски и колодки", mileage: 68000, cost: 0, datePerformed: "2024-03-10", dateAdded: "2026-06-12", note: "", source: "manual" },
-  ],
-};
+function emptyVehicleData(mileage = 0) {
+  return { mileage: Number(mileage || 0), logs: [] };
+}
+
+function genericProfileFor(vehicle) {
+  return {
+    vehicle,
+    serviceItems: DEFAULT_RULES,
+    commonIssues: [],
+    recommendations: [
+      "Добавьте историю обслуживания, чтобы Motrix точнее считал регламент.",
+      "Проверьте ключевые жидкости и фильтры после создания профиля.",
+      "Загрузите чек или заказ-наряд после ближайшего обслуживания.",
+    ],
+    disclaimer: "Базовый профиль создан по универсальному регламенту. Точные интервалы нужно подтвердить по VIN, мануалу или документам СТО.",
+  };
+}
+
+const defaultData = emptyVehicleData(0);
 
 const CHAT_KEY = "autopulse-chat";
 const RENDER_KEY = "autopulse-vehicle-render";
@@ -124,7 +137,7 @@ export default function App() {
     }
   });
 
-  const [vehicleForm, setVehicleForm] = useState({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", color: "", mileage: 86000 });
+  const [vehicleForm, setVehicleForm] = useState({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", color: "", mileage: "" });
   const [manualOpen, setManualOpen]   = useState(false);
   const [editingLogId, setEditingLogId] = useState(null);
   const [workDraft, setWorkDraft]     = useState({ normalizedId: "engine_service", title: "ТО двигателя", mileage: data.mileage, cost: "", datePerformed: todayIso(), note: "" });
@@ -245,30 +258,38 @@ export default function App() {
 
   // ── API: create vehicle profile ───────────────────────────────────────────
   async function detectVehicleByVin() {
-    const vin = vehicleForm.vin.trim().toUpperCase();
+    const cleaned = sanitizeVehicleForm(vehicleForm);
+    const vin = cleaned.vin;
     if (!vin) return alert("Введите VIN");
+    if (vin.length !== 17) return alert("VIN должен содержать 17 символов");
     try {
       setIsDetecting(true);
       const response = await fetch("/api/create-vehicle-profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vin, mileage: Number(vehicleForm.mileage || 0), color: vehicleForm.color }),
+        body: JSON.stringify({ vin, mileage: Number(cleaned.mileage || 0), color: cleaned.color }),
       });
       const result = await response.json();
       if (!response.ok) return alert(result.details || result.error || "Не удалось определить автомобиль");
       const mergedVehicle = {
         ...result.vehicle,
-        color: String(vehicleForm.color || result.vehicle?.color || "").trim(),
+        color: String(cleaned.color || result.vehicle?.color || "").trim(),
       };
-      const nextData = { ...data, mileage: Number(vehicleForm.mileage || 0) };
+      const nextData = emptyVehicleData(cleaned.mileage);
       setVehicle(mergedVehicle);
-      localStorage.setItem("autopulse-profile", JSON.stringify(result.profile));
-      setProfile(result.profile);
+      setProfile(result.profile || genericProfileFor(mergedVehicle));
+      setAnalysis(null);
+      setOwnerProfile(null);
       setData(nextData);
       setNewMileage(nextData.mileage);
       setWorkDraft((p) => ({ ...p, mileage: nextData.mileage }));
+      localStorage.setItem("autopulse-profile", JSON.stringify(result.profile || genericProfileFor(mergedVehicle)));
+      localStorage.removeItem("autopulse-analysis");
+      localStorage.removeItem("autopulse-owner-profile");
+      localStorage.removeItem("autopulse-reminders");
+      setReminders([]);
       generateVehicleRender(mergedVehicle);
-      if (!ownerProfile) { setProfileOnboardingOpen(true); } else { setTab("home"); setTimeout(() => analyzeVehicle(nextData, result.profile, mergedVehicle), 300); }
+      setProfileOnboardingOpen(true);
     } catch (error) { alert("Ошибка связи с сервером: " + error.message); }
     finally { setIsDetecting(false); }
   }
@@ -396,7 +417,7 @@ export default function App() {
   }
 
   // ── Local mutations ───────────────────────────────────────────────────────
-  function updateVehicleField(field, value) { setVehicleForm((prev) => ({ ...prev, [field]: value })); }
+  function updateVehicleField(field, value) { setVehicleForm((prev) => sanitizeVehicleForm({ ...prev, [field]: value })); }
 
   function saveOwnerProfile(profileData) {
     setOwnerProfile(profileData);
@@ -406,26 +427,41 @@ export default function App() {
     setTimeout(() => analyzeVehicle(), 300);
   }
 
-  function saveVehicleManually() {
+  function saveVehicleManually(formOverride = null) {
+    const validation = validateVehicleForm(formOverride || vehicleForm);
+    if (!validation.ok) return alert(validation.errors.join("\n"));
+    const clean = validation.vehicleForm;
     const v = {
-      vin: vehicleForm.vin,
-      brand: vehicleForm.brand,
-      model: vehicleForm.model,
-      generation: vehicleForm.generation,
-      year: Number(vehicleForm.year),
-      engine: vehicleForm.engine,
-      transmission: vehicleForm.transmission,
-      drive: vehicleForm.drive,
-      color: vehicleForm.color,
+      vin: clean.vin,
+      brand: clean.brand,
+      model: clean.model,
+      generation: clean.generation,
+      year: Number(clean.year),
+      engine: clean.engine,
+      transmission: clean.transmission,
+      drive: clean.drive,
+      color: clean.color,
       market: "manual",
     };
-    const nextData = { ...data, mileage: Number(vehicleForm.mileage) };
-    setVehicle(v); setData(nextData); setNewMileage(nextData.mileage); setWorkDraft((p) => ({ ...p, mileage: nextData.mileage }));
+    const nextProfile = genericProfileFor(v);
+    const nextData = emptyVehicleData(clean.mileage);
+    setVehicle(v);
+    setProfile(nextProfile);
+    setAnalysis(null);
+    setOwnerProfile(null);
+    setData(nextData);
+    setNewMileage(nextData.mileage);
+    setWorkDraft((p) => ({ ...p, mileage: nextData.mileage }));
+    localStorage.setItem("autopulse-profile", JSON.stringify(nextProfile));
+    localStorage.removeItem("autopulse-analysis");
+    localStorage.removeItem("autopulse-owner-profile");
+    localStorage.removeItem("autopulse-reminders");
+    setReminders([]);
     generateVehicleRender(v);
-    if (!ownerProfile) { setProfileOnboardingOpen(true); } else { setTab("home"); }
+    setProfileOnboardingOpen(true);
   }
 
-  function fillDemoVehicle() { setVehicleForm({ vin: "JF1SK7AC2MG117103", brand: "Subaru", model: "Forester", generation: "SK", year: "2020", engine: "FB20", transmission: "CVT", drive: "AWD", color: "темно-синий металлик", mileage: 86000 }); }
+  function fillDemoVehicle() { setVehicleForm(sanitizeVehicleForm({ vin: "JF1SK7AC2MG117103", brand: "Subaru", model: "Forester", generation: "SK", year: "2020", engine: "FB20", transmission: "CVT", drive: "AWD", color: "темно-синий металлик", mileage: 86000 })); }
 
   function saveMileage() {
     const nextData = { ...data, mileage: Number(newMileage) };
@@ -507,20 +543,22 @@ export default function App() {
   }
 
   function resetData() {
-    if (!confirm("Сбросить данные AutoPulse?")) return;
+    if (!confirm("Сбросить данные Motrix?")) return;
     ["autopulse-data","autopulse-vehicle","autopulse-profile","autopulse-analysis","autopulse-owner-profile","autopulse-reminders", CHAT_KEY, RENDER_KEY].forEach((k) => localStorage.removeItem(k));
     setVehicle(null); setProfile(null); setAnalysis(null); setOwnerProfile(null);
     setData(defaultData); setNewMileage(defaultData.mileage); setChat([]); setReminders([]);
     clearVehicleRender();
-    setVehicleForm({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", color: "", mileage: 86000 });
+    setVehicleForm({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", color: "", mileage: "" });
     setTab("home");
   }
 
   function changeVehicle() {
-    ["autopulse-vehicle","autopulse-profile","autopulse-analysis", RENDER_KEY].forEach((k) => localStorage.removeItem(k));
-    setVehicle(null); setProfile(null); setAnalysis(null);
+    if (!confirm("Сменить автомобиль? История текущего авто будет очищена в этом прототипе.")) return;
+    ["autopulse-data","autopulse-vehicle","autopulse-profile","autopulse-analysis","autopulse-owner-profile","autopulse-reminders", RENDER_KEY].forEach((k) => localStorage.removeItem(k));
+    setVehicle(null); setProfile(null); setAnalysis(null); setOwnerProfile(null);
+    setData(defaultData); setNewMileage(defaultData.mileage); setReminders([]);
     clearVehicleRender();
-    setVehicleForm({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", color: "", mileage: data.mileage });
+    setVehicleForm({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", color: "", mileage: "" });
     setTab("home");
   }
 
@@ -532,37 +570,17 @@ export default function App() {
   // ── Onboarding (no vehicle yet) ───────────────────────────────────────────
   if (!vehicle) {
     return (
-      <div className="app">
-        <div className="onboard">
-          <div className="onboard-hero">
-            <div className="onboard-logo">🚗</div>
-            <div className="onboard-title">AutoPulse</div>
-            <div className="onboard-sub">Персональный AI-механик для вашего автомобиля</div>
-          </div>
-          <div className="section-heading">Добавить автомобиль</div>
-          <label className={`upload-label primary${isParsingSts ? " loading" : ""}`}>
-            {isParsingSts ? "Распознаю СТС..." : "📷 Добавить по фото СТС"}
-            <input type="file" accept="image/*" onChange={parseStsPhoto} hidden disabled={isParsingSts} />
-          </label>
-          <input value={vehicleForm.vin} onChange={(e) => updateVehicleField("vin", e.target.value)} placeholder="VIN-номер" />
-          <input type="number" value={vehicleForm.mileage} onChange={(e) => updateVehicleField("mileage", e.target.value)} placeholder="Текущий пробег, км" />
-          <button className="btn btn-blue" onClick={detectVehicleByVin} disabled={isDetecting}>
-            {isDetecting ? "🧠 Создаю профиль..." : "🔍 Добавить по VIN"}
-          </button>
-          <details className="compact-details">
-            <summary>Ручное заполнение</summary>
-            <input value={vehicleForm.brand}        onChange={(e) => updateVehicleField("brand", e.target.value)}        placeholder="Марка" />
-            <input value={vehicleForm.model}        onChange={(e) => updateVehicleField("model", e.target.value)}        placeholder="Модель" />
-            <input value={vehicleForm.generation}   onChange={(e) => updateVehicleField("generation", e.target.value)}   placeholder="Поколение" />
-            <input type="number" value={vehicleForm.year} onChange={(e) => updateVehicleField("year", e.target.value)}   placeholder="Год выпуска" />
-            <input value={vehicleForm.engine}       onChange={(e) => updateVehicleField("engine", e.target.value)}       placeholder="Двигатель" />
-            <input value={vehicleForm.transmission} onChange={(e) => updateVehicleField("transmission", e.target.value)} placeholder="Коробка" />
-            <input value={vehicleForm.drive}        onChange={(e) => updateVehicleField("drive", e.target.value)}        placeholder="Привод" />
-            <input value={vehicleForm.color}        onChange={(e) => updateVehicleField("color", e.target.value)}        placeholder="Цвет" />
-            <button className="btn btn-blue" onClick={saveVehicleManually}>Сохранить вручную</button>
-          </details>
-          <button className="btn btn-gray" onClick={fillDemoVehicle}>Заполнить демо Subaru</button>
-        </div>
+      <div className="app mx-app-shell">
+        <WelcomeScreen
+          vehicleForm={vehicleForm}
+          updateVehicleField={updateVehicleField}
+          parseStsPhoto={parseStsPhoto}
+          detectVehicleByVin={detectVehicleByVin}
+          saveVehicleManually={saveVehicleManually}
+          fillDemoVehicle={fillDemoVehicle}
+          isParsingSts={isParsingSts}
+          isDetecting={isDetecting}
+        />
       </div>
     );
   }
@@ -571,7 +589,7 @@ export default function App() {
   return (
     <div className="app">
       <div className="topbar">
-        <span className="topbar-brand">AutoPulse</span>
+        <span className="topbar-brand">Motrix</span>
         {isAnalyzing && <span className="topbar-analyzing">Анализирую...</span>}
         <button className="icon-btn" onClick={() => setTab("more")}>⚙️</button>
       </div>

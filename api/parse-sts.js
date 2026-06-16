@@ -51,7 +51,7 @@ export default async function handler(req, res) {
           role: "system",
           content: `Ты система распознавания российского СТС (свидетельство о регистрации транспортного средства).
 
-Извлеки следующие поля:
+Верни только валидный json без markdown, пояснений и текста вне json. Извлеки следующие поля:
 - vin: VIN-номер (17 символов, только латиница и цифры)
 - brand: марка автомобиля (как написано в документе)
 - model: модель
@@ -71,7 +71,7 @@ export default async function handler(req, res) {
           content: [
             {
               type: "text",
-              text: "Распознай СТС. Верни JSON: { vin, brand, model, year, plate, category, color, confidence }. Пустые поля — null или пустая строка.",
+              text: "Распознай СТС. Верни json: { vin, brand, model, year, plate, category, color, confidence }. Пустые поля — null или пустая строка.",
             },
             { type: "image_url", image_url: { url: imageUrl } },
           ],

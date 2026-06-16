@@ -48,7 +48,7 @@ export default async function handler(req, res) {
           role: "system",
           content: `Ты нормализатор сервисных документов для AutoPulse.
 
-Задача: разобрать документ СТО (заказ-наряд, чек, квитанция) и вернуть нормализованный список выполненных работ.
+Задача: разобрать документ СТО (заказ-наряд, чек, квитанция) и вернуть нормализованный список выполненных работ. Верни только валидный json без markdown, пояснений и текста вне json.
 
 Правила нормализации:
 - «колодки» → «Замена тормозных колодок»
@@ -68,7 +68,7 @@ export default async function handler(req, res) {
 Поле confidence для каждой работы: "high" если тип работы однозначен, "medium" если есть сомнение, "low" если работа неясна.
 Поле sourceText — оригинальный текст из документа для этой строки (коротко, как в документе).
 
-Не выдумывай пробег и стоимость. Если пробег не виден в документе — используй currentMileage из запроса.`,
+Не выдумывай пробег и стоимость. Если пробег не виден в документе — используй currentMileage из запроса. Ответ должен быть строго в формате json_object.`,
         },
         {
           role: "user",
@@ -79,7 +79,7 @@ export default async function handler(req, res) {
                 vehicle,
                 currentMileage: mileage,
                 allowedNormalizedIds: CANONICAL_SERVICE_IDS,
-                outputFormat: `{
+                outputFormat: `json schema: {
   "logs": [
     {
       "normalizedId": string,
