@@ -1,0 +1,75 @@
+:root{
+  --mx-bg:#080a0f;
+  --mx-card:#11141b;
+  --mx-card-2:#171a22;
+  --mx-line:rgba(255,255,255,.075);
+  --mx-text:#f4f6fb;
+  --mx-muted:#7d8492;
+  --mx-dim:#444b5a;
+  --mx-blue:#3b82f6;
+  --mx-green:#22c55e;
+  --mx-yellow:#f59e0b;
+  --mx-red:#ef4444;
+  --mx-glass:rgba(255,255,255,.08);
+}
+
+.mx-home{padding:0 14px 26px;animation:mx-screen-in .32s cubic-bezier(.2,.8,.2,1)}
+@keyframes mx-screen-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+.mx-home button,.mx-home label{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.mx-home button:active,.mx-home label:active{transform:scale(.985)}
+
+.mx-hero.hero-card{min-height:380px;border-radius:32px;margin-bottom:12px;padding:0;box-shadow:0 24px 60px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08)}
+.mx-hero-img{object-position:center 24%;opacity:.95;transform:scale(1.02);filter:saturate(1.06) contrast(1.05)}
+.mx-hero-scrim{background:linear-gradient(180deg,rgba(8,10,15,.04) 0%,rgba(8,10,15,.08) 36%,rgba(8,10,15,.30) 59%,rgba(8,10,15,.78) 82%,rgba(8,10,15,.97) 100%)}
+.mx-blue-glow{background:radial-gradient(circle,rgba(59,130,246,.18) 0%,transparent 68%)}
+.mx-hero-content{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;justify-content:space-between;padding:16px}
+.mx-hero-topline{display:flex;justify-content:space-between;align-items:flex-start;min-height:42px}
+.mx-glass-pill{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:999px;background:rgba(13,18,28,.48);border:1px solid rgba(255,255,255,.13);color:#dce7f6;font-size:11px;font-weight:800;letter-spacing:.45px;text-transform:uppercase;backdrop-filter:blur(18px)}
+.mx-glass-pill.danger{color:#fecaca;background:rgba(239,68,68,.14)}
+.mx-glass-pill.pulse{animation:mx-pulse 1.4s ease-in-out infinite}
+@keyframes mx-pulse{0%,100%{opacity:1}50%{opacity:.48}}
+.mx-hero-bottom{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;padding:16px;border-radius:26px;background:linear-gradient(135deg,rgba(255,255,255,.10),rgba(255,255,255,.045));border:1px solid rgba(255,255,255,.13);backdrop-filter:blur(22px);box-shadow:0 18px 42px rgba(0,0,0,.28)}
+.mx-brand{font-size:10px;font-weight:900;letter-spacing:2.4px;color:#8ab4ff;margin-bottom:6px}
+.mx-car-title{font-size:26px;font-weight:900;letter-spacing:-.8px;line-height:1.04;color:var(--mx-text)}
+.mx-car-specs{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+.mx-car-specs span{font-size:11px;color:#c9d2df;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:5px 8px;white-space:nowrap}
+.mx-score{width:68px;height:68px;border-radius:23px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.10);color:#fff;font-size:19px;font-weight:950;backdrop-filter:blur(18px);flex-shrink:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.10)}
+.mx-score.good{color:#86efac}.mx-score.warn{color:#fde68a}.mx-score.bad{color:#fecaca}
+
+.mx-mileage-card{width:100%;display:flex;align-items:center;justify-content:space-between;border:1px solid var(--mx-line);border-radius:22px;background:linear-gradient(135deg,rgba(255,255,255,.07),rgba(255,255,255,.035));padding:13px 14px;margin-bottom:10px;color:var(--mx-text);backdrop-filter:blur(18px)}
+.mx-mileage-card>span{font-size:12px;color:var(--mx-muted);font-weight:750;text-transform:uppercase;letter-spacing:.6px}
+.mx-mileage-edit{display:flex;align-items:center;gap:6px}
+.mx-mileage-input{font-size:20px!important;width:94px!important;text-align:right;color:var(--mx-text)!important}
+.mx-mileage-edit b{font-size:13px;color:#aab2c0}.mx-save{border:0;background:var(--mx-blue);color:white;border-radius:11px;width:32px;height:30px;font-weight:900}
+
+.mx-priority-tile{position:relative;width:100%;text-align:left;border:1px solid var(--mx-line);border-radius:30px;padding:22px 54px 22px 22px;margin:12px 0;background:linear-gradient(145deg,#171a22,#0f1218);color:var(--mx-text);overflow:hidden;box-shadow:0 16px 42px rgba(0,0,0,.20)}
+.mx-priority-tile:before{content:"";position:absolute;inset:-80px -90px auto auto;width:210px;height:210px;border-radius:50%;background:radial-gradient(circle,rgba(239,68,68,.22),transparent 68%);opacity:.9}
+.mx-priority-tile.calm:before{background:radial-gradient(circle,rgba(34,197,94,.18),transparent 68%)}
+.mx-priority-kicker{position:relative;z-index:1;display:block;font-size:11px;color:#9aa6b8;font-weight:850;text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px}
+.mx-priority-tile strong{position:relative;z-index:1;display:block;font-size:34px;font-weight:950;letter-spacing:-1.4px;line-height:1.02;margin-bottom:8px}
+.mx-priority-tile small{position:relative;z-index:1;display:block;font-size:14px;color:#b8c0cf}.mx-priority-tile .mx-chevron{position:absolute;right:22px;top:50%;transform:translateY(-50%);font-size:34px;color:#596272}
+
+.mx-reminder{width:100%;display:flex;justify-content:space-between;gap:12px;align-items:center;text-align:left;border:1px solid rgba(245,158,11,.15);border-radius:22px;background:rgba(245,158,11,.075);padding:15px;margin:0 0 12px;color:var(--mx-text)}
+.mx-reminder.high{border-color:rgba(239,68,68,.18);background:rgba(239,68,68,.08)}
+.mx-reminder b{display:block;font-size:15px;margin-bottom:3px}.mx-reminder span{display:block;font-size:12px;color:#9fa8b8;line-height:1.35}
+
+.mx-action-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}.mx-action-grid.three{grid-template-columns:repeat(3,1fr)}
+.mx-mini-card,.mx-quick-action{min-height:112px;text-align:left;border:1px solid var(--mx-line);border-radius:26px;background:linear-gradient(145deg,rgba(255,255,255,.075),rgba(255,255,255,.035));padding:16px;color:var(--mx-text);box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.mx-mini-card span,.mx-mini-card small{display:block;color:var(--mx-muted);font-size:12px;font-weight:700}.mx-mini-card strong{display:block;margin:10px 0 6px;font-size:20px;line-height:1.05;font-weight:900;letter-spacing:-.5px}
+.mx-quick-action{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;min-height:88px;padding:12px}.mx-quick-action span{font-size:22px}.mx-quick-action b{font-size:13px}.mx-quick-action.loading{opacity:.55;pointer-events:none}
+
+.mx-sheet-backdrop{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.58);backdrop-filter:blur(8px);display:flex;align-items:flex-end;justify-content:center;animation:mx-fade .18s ease-out}
+@keyframes mx-fade{from{opacity:0}to{opacity:1}}
+.mx-sheet{width:100%;max-width:480px;max-height:88vh;overflow:auto;border-radius:34px 34px 0 0;background:linear-gradient(180deg,rgba(29,33,43,.96),rgba(13,16,24,.98));border:1px solid rgba(255,255,255,.11);border-bottom:0;box-shadow:0 -28px 70px rgba(0,0,0,.48);padding:10px 16px 34px;color:var(--mx-text);animation:mx-sheet-up .24s cubic-bezier(.2,.8,.2,1)}
+@keyframes mx-sheet-up{from{transform:translateY(32px);opacity:.4}to{transform:translateY(0);opacity:1}}
+.mx-sheet-handle{width:42px;height:5px;border-radius:99px;background:rgba(255,255,255,.16);margin:0 auto 14px}.mx-sheet-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px}.mx-sheet-head h3{font-size:22px;font-weight:950;letter-spacing:-.6px}.mx-sheet-head p{font-size:12px;color:var(--mx-muted);margin-top:4px;line-height:1.35}.mx-sheet-close{width:38px;height:38px;border:0;border-radius:50%;background:rgba(255,255,255,.10);color:#d6dbe5;font-size:25px;line-height:1;flex-shrink:0}
+
+.mx-problem-list{display:flex;flex-direction:column;gap:9px}.mx-problem-row{width:100%;display:flex;align-items:center;gap:12px;text-align:left;border:1px solid var(--mx-line);border-radius:22px;background:rgba(255,255,255,.055);padding:14px;color:var(--mx-text)}.mx-problem-row.high{background:rgba(239,68,68,.075);border-color:rgba(239,68,68,.16)}.mx-problem-row.medium{background:rgba(245,158,11,.065);border-color:rgba(245,158,11,.15)}.mx-problem-dot{width:10px;height:10px;border-radius:99px;background:var(--mx-blue);box-shadow:0 0 20px currentColor;flex-shrink:0}.mx-problem-row.high .mx-problem-dot{background:var(--mx-red)}.mx-problem-row.medium .mx-problem-dot{background:var(--mx-yellow)}.mx-problem-copy{flex:1;min-width:0}.mx-problem-copy b{display:block;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mx-problem-copy small{display:block;color:#97a0af;font-size:12px;margin-top:3px}.mx-problem-status{font-size:11px;color:#aab2c0;background:rgba(255,255,255,.07);padding:5px 8px;border-radius:999px}.mx-chevron{font-size:24px;color:#596272}
+
+.mx-detail-hero{border-radius:28px;padding:20px;margin-bottom:12px;background:linear-gradient(145deg,rgba(59,130,246,.18),rgba(255,255,255,.055));border:1px solid rgba(255,255,255,.11)}.mx-detail-hero.high{background:linear-gradient(145deg,rgba(239,68,68,.22),rgba(255,255,255,.055));border-color:rgba(239,68,68,.18)}.mx-detail-hero.medium{background:linear-gradient(145deg,rgba(245,158,11,.20),rgba(255,255,255,.055));border-color:rgba(245,158,11,.18)}.mx-detail-hero span{font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.8px;color:#cbd5e1}.mx-detail-hero h4{font-size:28px;line-height:1.02;letter-spacing:-1px;margin:8px 0}.mx-detail-hero p{color:#d3dae6;font-size:14px}
+.mx-detail-block,.mx-commerce-block{border:1px solid var(--mx-line);border-radius:24px;background:rgba(255,255,255,.055);padding:16px;margin-bottom:12px}.mx-detail-label,.mx-block-title{font-size:11px;color:#9aa6b8;font-weight:900;text-transform:uppercase;letter-spacing:.7px;margin-bottom:12px}.mx-detail-text{font-size:14px;color:#d3dae6;line-height:1.55}.mx-metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mx-metric{border-radius:18px;background:rgba(0,0,0,.20);padding:12px}.mx-metric span{display:block;font-size:11px;color:#818b9b;margin-bottom:5px}.mx-metric b{font-size:15px}.mx-metric.bad b{color:#fecaca}
+.mx-query-chip{border-radius:16px;background:rgba(0,0,0,.20);padding:11px 12px;color:#dbe4f2;font-size:13px;line-height:1.35;margin-bottom:10px}.mx-commerce-grid{display:grid;grid-template-columns:1fr;gap:8px}.mx-commerce-grid button,.mx-service-cta,.mx-dual-actions button,.mx-dual-actions label,.mx-wide-ghost{border:0;border-radius:18px;padding:14px 16px;background:#e8eefb;color:#080a0f;font-size:14px;font-weight:900;text-align:center}.mx-commerce-grid button:first-child{background:#7dd3fc}.mx-commerce-block.service{background:rgba(59,130,246,.085);border-color:rgba(59,130,246,.16)}.mx-commerce-block.service p{color:#b8c0cf;font-size:13px;line-height:1.5;margin-bottom:12px}.mx-service-cta{width:100%;background:#3b82f6;color:white}.mx-wide-ghost{width:100%;background:rgba(255,255,255,.075);color:#dbe4f2;border:1px solid var(--mx-line);margin-bottom:12px}.mx-alt-queries{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.mx-alt-queries span{font-size:11px;color:#aab2c0;background:rgba(255,255,255,.07);border-radius:999px;padding:6px 8px}.mx-dual-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mx-dual-actions label{display:block;background:#dbeafe;color:#0b1220}.mx-dual-actions button:nth-child(2){background:rgba(255,255,255,.10);color:#e5edf9;border:1px solid var(--mx-line)}
+.mx-fineprint{font-size:11px;color:#6f7888;line-height:1.45;margin:6px 2px 0}.mx-empty-state{border:1px dashed rgba(255,255,255,.12);border-radius:22px;padding:18px;color:#9aa6b8;font-size:14px;line-height:1.5;text-align:center}.mx-subsection{margin-top:12px}.mx-forecast-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}.mx-forecast-grid div{border:1px solid var(--mx-line);border-radius:20px;background:rgba(255,255,255,.055);padding:14px 10px;text-align:center}.mx-forecast-grid span{display:block;font-size:11px;color:#8f99aa;margin-bottom:8px}.mx-forecast-grid b{font-size:17px}.mx-last-sheet{width:100%;text-align:left;border:1px solid var(--mx-line);border-radius:24px;background:rgba(255,255,255,.06);padding:18px;color:var(--mx-text)}.mx-last-sheet span,.mx-last-sheet small{display:block;color:#9aa6b8}.mx-last-sheet strong{display:block;font-size:20px;margin:7px 0}.mx-mileage-sheet-row{display:grid;grid-template-columns:1fr auto;gap:8px}.mx-mileage-sheet-row input{margin:0!important}.mx-health-big{font-size:72px;font-weight:950;letter-spacing:-3px;line-height:1}.mx-health-big.good{color:#86efac}.mx-health-big.warn{color:#fde68a}.mx-health-big.bad{color:#fecaca}
+
+@media(max-width:360px){.mx-hero.hero-card{min-height:350px}.mx-car-title{font-size:23px}.mx-priority-tile strong{font-size:30px}.mx-action-grid.three{gap:7px}.mx-quick-action b{font-size:12px}.mx-metric-grid{grid-template-columns:1fr}}

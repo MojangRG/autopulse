@@ -1,4 +1,6 @@
+import { useMemo, useState } from "react";
 import CarVisual from "./CarVisual.jsx";
+import "../motrix-ui.css";
 
 function km(v) { return Number(v || 0).toLocaleString("ru-RU") + " км"; }
 function rub(v) { return Number(v || 0).toLocaleString("ru-RU") + " ₽"; }
@@ -9,70 +11,240 @@ function healthColor(score) {
   return "bad";
 }
 
-function PrimaryActionCard({ action, mileage, onScan, isParsingDoc }) {
-  if (!action) return null;
+function severityLabel(severity) {
+  if (severity === "high") return "Срочно";
+  if (severity === "medium") return "Важно";
+  return "Планово";
+}
 
-  const isOverdue = action.type === "overdue";
-  const isUpcoming = action.type === "upcoming";
-  const isScan = action.type === "scan";
-  const color = isOverdue ? "high" : isUpcoming ? "medium" : "low";
-  const tagLabel = isOverdue ? "Требует обслуживания" : isUpcoming ? "Скоро потребуется" : "Рекомендация";
+function statusWord(problem) {
+  if (problem?.status === "Просрочено") return "Просрочено";
+  if (problem?.status === "Скоро") return "Скоро";
+  if (problem?.status === "Нет данных" || problem?.type === "scan") return "Нет данных";
+  return "Рекомендация";
+}
+
+function problemName(problem) {
+  return problem?.name || problem?.title || problem?.itemName || "Рекомендация";
+}
+
+function problemTone(problem) {
+  if (problem?.status === "Просрочено" || problem?.severity === "high") return "high";
+  if (problem?.status === "Скоро" || problem?.severity === "medium") return "medium";
+  return "low";
+}
+
+function problemShort(problem) {
+  if (!problem) return "";
+  if (problem.status === "Просрочено") return `Перепробег ${km(Math.abs(problem.left || 0))}`;
+  if (problem.status === "Скоро") return `Осталось ~${km(problem.left || 0)}`;
+  if (problem.type === "scan" || problem.status === "Нет данных") return "Нужно добавить историю";
+  if (problem.estimatedMonths > 0) return `~${problem.estimatedMonths} мес`;
+  if (problem.left > 0) return `~${km(problem.left)}`;
+  return "Откройте детали";
+}
+
+function riskText(problem) {
+  const name = problemName(problem).toLowerCase();
+  if (problem?.type === "scan" || problem?.status === "Нет данных") return "Motrix не видит подтверждённых записей. Риск в том, что реальное состояние узла неизвестно.";
+  if (name.includes("масло")) return "Если игнорировать, растёт износ двигателя и стоимость будущего ремонта.";
+  if (name.includes("cvt") || name.includes("вариатор")) return "Вариатор чувствителен к обслуживанию. Лучше не затягивать с диагностикой и заменой жидкости.";
+  if (name.includes("тормоз")) return "Тормозная система влияет на безопасность. Рекомендацию лучше подтвердить на СТО.";
+  if (name.includes("фильтр")) return "Фильтр влияет на ресурс узла, комфорт и качество обслуживания.";
+  return "Рекомендация основана на пробеге, истории обслуживания и регламенте.";
+}
+
+function buildShoppingQueries(problem, vehicle) {
+  const name = problemName(problem).toLowerCase();
+  const car = [vehicle?.brand, vehicle?.model, vehicle?.generation, vehicle?.engine, vehicle?.year]
+    .filter(Boolean)
+    .join(" ");
+
+  if (problem?.id === "engine_oil" || name.includes("масло двигателя")) {
+    return [
+      `масло 5W-30 ${car}`,
+      `масляный фильтр ${car}`,
+      `комплект ТО ${car}`,
+    ];
+  }
+  if (problem?.id === "oil_filter" || name.includes("масляный фильтр")) return [`масляный фильтр ${car}`];
+  if (problem?.id === "cabin_filter" || name.includes("салон")) return [`салонный фильтр ${car}`];
+  if (problem?.id === "air_filter" || name.includes("воздуш")) return [`воздушный фильтр ${car}`];
+  if (problem?.id === "brake_fluid" || name.includes("тормозная жидкость")) return [`тормозная жидкость DOT 4 ${car}`];
+  if (problem?.id === "spark_plugs" || name.includes("свеч")) return [`свечи зажигания ${car}`];
+  if (problem?.id === "cvt_fluid" || name.includes("cvt") || name.includes("вариатор")) return [`масло CVT ${car}`];
+  if (name.includes("колод")) return [`тормозные колодки ${car}`];
+  if (name.includes("диск")) return [`тормозные диски ${car}`];
+
+  return [`${problemName(problem)} ${car}`];
+}
+
+function marketplaceUrl(platform, query) {
+  const q = encodeURIComponent(query);
+  // TODO: replace direct search URLs with backend redirect URLs containing affiliate ids.
+  if (platform === "wb") return `https://www.wildberries.ru/catalog/0/search.aspx?search=${q}`;
+  if (platform === "ozon") return `https://www.ozon.ru/search/?text=${q}`;
+  return `https://market.yandex.ru/search?text=${q}`;
+}
+
+function mapsUrl(problem, vehicle) {
+  const query = [problemName(problem), vehicle?.brand, vehicle?.model, "СТО рядом"]
+    .filter(Boolean)
+    .join(" ");
+  return `https://yandex.ru/maps/?text=${encodeURIComponent(query)}`;
+}
+
+function openUrl(url) {
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function GlassSheet({ title, subtitle, children, onClose }) {
+  return (
+    <div className="mx-sheet-backdrop" onClick={onClose}>
+      <div className="mx-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="mx-sheet-handle" />
+        <div className="mx-sheet-head">
+          <div>
+            <h3>{title}</h3>
+            {subtitle && <p>{subtitle}</p>}
+          </div>
+          <button className="mx-sheet-close" onClick={onClose} aria-label="Закрыть">×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ProblemRow({ problem, onClick }) {
+  const tone = problemTone(problem);
+  return (
+    <button className={`mx-problem-row ${tone}`} onClick={onClick}>
+      <span className="mx-problem-dot" />
+      <span className="mx-problem-copy">
+        <b>{problemName(problem)}</b>
+        <small>{problemShort(problem)}</small>
+      </span>
+      <span className="mx-problem-status">{statusWord(problem)}</span>
+      <span className="mx-chevron">›</span>
+    </button>
+  );
+}
+
+function DetailMetric({ label, value, tone }) {
+  if (value == null || value === "") return null;
+  return (
+    <div className={`mx-metric ${tone || ""}`}>
+      <span>{label}</span>
+      <b>{value}</b>
+    </div>
+  );
+}
+
+function MarketplaceBlock({ problem, vehicle }) {
+  const queries = buildShoppingQueries(problem, vehicle);
+  const mainQuery = queries[0];
 
   return (
-    <div className={`primary-action-card sev-${color}`}>
-      <div className="primary-action-tag">{tagLabel}</div>
-      <div className="primary-action-title">{action.title}</div>
-
-      {(isOverdue || isUpcoming) && action.why && (
-        <div className="primary-action-why">
-          {action.why.lastKm != null && (
-            <div className="why-row">
-              <span className="why-key">Последняя замена</span>
-              <span className="why-val">{km(action.why.lastKm)}</span>
-            </div>
-          )}
-          {action.why.currentKm > 0 && (
-            <div className="why-row">
-              <span className="why-key">Текущий пробег</span>
-              <span className="why-val">{km(action.why.currentKm)}</span>
-            </div>
-          )}
-          {action.why.drivenSince != null && action.why.drivenSince > 0 && (
-            <div className="why-row">
-              <span className="why-key">Пройдено с замены</span>
-              <span className="why-val">{km(action.why.drivenSince)}</span>
-            </div>
-          )}
-          {action.why.interval && (
-            <div className="why-row">
-              <span className="why-key">Интервал замены</span>
-              <span className="why-val">{km(action.why.interval)}</span>
-            </div>
-          )}
-          {action.why.overdueBy != null && (
-            <div className="why-row overdue-row">
-              <span className="why-key">Просрочено на</span>
-              <span className="why-val why-overdue">{km(action.why.overdueBy)}</span>
-            </div>
-          )}
-          {action.why.kmLeft != null && (
-            <div className="why-row">
-              <span className="why-key">До обслуживания</span>
-              <span className="why-val">~{km(action.why.kmLeft)}</span>
-            </div>
-          )}
+    <div className="mx-commerce-block">
+      <div className="mx-block-title">Подобрать расходники</div>
+      <div className="mx-query-chip">{mainQuery}</div>
+      <div className="mx-commerce-grid">
+        <button onClick={() => openUrl(marketplaceUrl("wb", mainQuery))}>Wildberries</button>
+        <button onClick={() => openUrl(marketplaceUrl("ozon", mainQuery))}>Ozon</button>
+        <button onClick={() => openUrl(marketplaceUrl("ym", mainQuery))}>Яндекс Маркет</button>
+      </div>
+      {queries.length > 1 && (
+        <div className="mx-alt-queries">
+          {queries.slice(1).map((q) => <span key={q}>{q}</span>)}
         </div>
       )}
+    </div>
+  );
+}
 
-      {isScan && action.why?.reason && (
-        <div className="primary-action-reason">{action.why.reason}</div>
+function ServiceBookingBlock({ problem, vehicle }) {
+  return (
+    <div className="mx-commerce-block service">
+      <div className="mx-block-title">Записаться на СТО</div>
+      <p>Откроем Яндекс Карты с поиском сервиса под эту задачу.</p>
+      <button className="mx-service-cta" onClick={() => openUrl(mapsUrl(problem, vehicle))}>Открыть сервисы рядом</button>
+    </div>
+  );
+}
+
+function ProblemDetail({ problem, vehicle, onManualAdd, onScan }) {
+  const tone = problemTone(problem);
+  const isUnknown = problem?.type === "scan" || problem?.status === "Нет данных";
+  const drivenSince = problem?.lastMileage > 0 ? Number(vehicle?.mileage || 0) - Number(problem.lastMileage) : null;
+
+  return (
+    <div className="mx-problem-detail">
+      <div className={`mx-detail-hero ${tone}`}>
+        <span>{severityLabel(problem?.severity)}</span>
+        <h4>{problemName(problem)}</h4>
+        <p>{problemShort(problem)}</p>
+      </div>
+
+      <div className="mx-detail-block">
+        <div className="mx-detail-label">Почему Motrix это показал</div>
+        <div className="mx-metric-grid">
+          <DetailMetric label="Последняя запись" value={problem?.lastMileage > 0 ? km(problem.lastMileage) : null} />
+          <DetailMetric label="Интервал" value={problem?.intervalKm > 0 ? km(problem.intervalKm) : null} />
+          <DetailMetric label="Осталось" value={problem?.status === "Скоро" ? km(problem.left) : null} />
+          <DetailMetric label="Перепробег" value={problem?.status === "Просрочено" ? km(Math.abs(problem.left || 0)) : null} tone="bad" />
+          <DetailMetric label="С замены" value={drivenSince > 0 ? km(drivenSince) : null} />
+        </div>
+      </div>
+
+      <div className="mx-detail-block">
+        <div className="mx-detail-label">Риск</div>
+        <p className="mx-detail-text">{riskText(problem)}</p>
+      </div>
+
+      {isUnknown ? (
+        <div className="mx-commerce-block service">
+          <div className="mx-block-title">Добавить данные</div>
+          <p>Загрузите чек, заказ-наряд или добавьте обслуживание вручную. Так Motrix перестанет гадать и начнёт считать точно.</p>
+          <div className="mx-dual-actions">
+            <label>
+              Загрузить документ
+              <input type="file" accept="image/*" onChange={onScan} hidden />
+            </label>
+            <button onClick={onManualAdd}>Добавить вручную</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <MarketplaceBlock problem={problem} vehicle={vehicle} />
+          <ServiceBookingBlock problem={problem} vehicle={vehicle} />
+          <button className="mx-wide-ghost" onClick={onManualAdd}>Отметить как выполнено</button>
+        </>
       )}
 
-      {isScan && (
-        <label className={`primary-action-scan-btn${isParsingDoc ? " loading" : ""}`}>
-          {isParsingDoc ? "Читаю документ..." : "Отсканировать документ"}
-          <input type="file" accept="image/*" onChange={onScan} hidden disabled={isParsingDoc} />
-        </label>
+      <p className="mx-fineprint">Motrix не заменяет диагностику. Перед покупкой детали проверьте применимость по VIN, артикулу и параметрам автомобиля.</p>
+    </div>
+  );
+}
+
+function ForecastSheet({ costForecast, mileagePace, mileagePaceData, problems, onOpenProblem }) {
+  return (
+    <div>
+      <div className="mx-forecast-grid">
+        <div><span>Месяц</span><b>{costForecast?.nextMonth > 0 ? rub(costForecast.nextMonth) : "—"}</b></div>
+        <div><span>6 месяцев</span><b>{costForecast?.next6Months > 0 ? rub(costForecast.next6Months) : "—"}</b></div>
+        <div><span>Год</span><b>{costForecast?.nextYear > 0 ? rub(costForecast.nextYear) : "—"}</b></div>
+      </div>
+      {problems?.length > 0 && (
+        <div className="mx-subsection">
+          <div className="mx-block-title">Из чего складывается</div>
+          {problems.slice(0, 5).map((problem) => (
+            <ProblemRow key={problem.id || problem.name} problem={problem} onClick={() => onOpenProblem(problem)} />
+          ))}
+        </div>
+      )}
+      {mileagePace > 0 && (
+        <p className="mx-fineprint">Темп: {mileagePace.toLocaleString("ru-RU")} км/мес. Точность: {mileagePaceData?.confidence || "низкая"}.</p>
       )}
     </div>
   );
@@ -102,179 +274,206 @@ export default function HomeScreen({
   onReminderDismiss,
   onReminderDone,
 }) {
+  const [sheet, setSheet] = useState(null);
+  const [selectedProblem, setSelectedProblem] = useState(null);
   const hc = healthColor(healthScore);
   const topReminder = reminders?.find((r) => r.status === "active");
-  const moreUrgentCount = (urgentActions?.length || 0) - 1;
+
+  const problems = useMemo(() => {
+    const items = [...(urgentActions || [])];
+    if (items.length === 0 && primaryAction?.type === "scan") {
+      items.push({
+        id: "scan-history",
+        name: primaryAction.title,
+        title: primaryAction.title,
+        type: "scan",
+        severity: primaryAction.severity || "medium",
+        status: "Нет данных",
+        left: 0,
+      });
+    }
+    return items.slice(0, 5);
+  }, [urgentActions, primaryAction]);
+
+  const highCount = problems.filter((p) => problemTone(p) === "high").length;
+  const mediumCount = problems.filter((p) => problemTone(p) === "medium").length;
+  const nextItem = upcomingItems?.[0];
+  const vehicleWithMileage = { ...vehicle, mileage };
+
+  function openProblem(problem) {
+    setSelectedProblem(problem);
+    setSheet("problem");
+  }
+
+  function closeSheet() {
+    setSheet(null);
+  }
 
   return (
-    <div className="home-screen">
-
-      {/* Vehicle hero */}
-      <div className={`hero-card ${vehicleRender?.imageUrl ? "has-render" : ""}`}>
-        {vehicleRender?.imageUrl && (
-          <img className="hero-render-image" src={vehicleRender.imageUrl} alt={`${vehicle.brand} ${vehicle.model}`} />
-        )}
-        <div className="hero-render-scrim" />
-        <div className="hero-glow" />
+    <div className="home-screen mx-home">
+      <div className={`mx-hero hero-card ${vehicleRender?.imageUrl ? "has-render" : ""}`}>
+        {vehicleRender?.imageUrl && <img className="hero-render-image mx-hero-img" src={vehicleRender.imageUrl} alt={`${vehicle.brand} ${vehicle.model}`} />}
+        <div className="hero-render-scrim mx-hero-scrim" />
+        <div className="hero-glow mx-blue-glow" />
         {!vehicleRender?.imageUrl && <CarVisual vehicle={vehicle} />}
-        <div className="hero-content">
-          {(isGeneratingRender || vehicleRender?.status === "loading") && (
-            <div className="hero-render-badge loading">AI-рендер создаётся…</div>
-          )}
-          {!isGeneratingRender && vehicleRender?.status === "ready" && vehicleRender?.imageUrl && (
-            <div className="hero-render-badge ready">AI render</div>
-          )}
-          {vehicleRender?.status === "error" && (
-            <div className="hero-render-badge error" title={vehicleRender.error || ""}>
-              Рендер не создан
-              {vehicleRender.error && <span className="hero-render-error-text">{vehicleRender.error}</span>}
-            </div>
-          )}
-          <div className="hero-brand">{vehicle.brand}</div>
-          <div className="hero-model">{vehicle.model}</div>
-          <div className="hero-chips">
-            {[vehicle.year, vehicle.engine, vehicle.transmission, vehicle.drive, vehicle.color]
-              .filter(Boolean)
-              .map((v) => <span className="hero-chip" key={v}>{v}</span>)}
+
+        <div className="mx-hero-content">
+          <div className="mx-hero-topline">
+            {(isGeneratingRender || vehicleRender?.status === "loading") && <span className="mx-glass-pill pulse">Рендер создаётся</span>}
+            {!isGeneratingRender && vehicleRender?.status === "ready" && vehicleRender?.imageUrl && <span className="mx-glass-pill">AI render</span>}
+            {vehicleRender?.status === "error" && <span className="mx-glass-pill danger">Рендер не создан</span>}
           </div>
-          <div className="hero-status-row">
-            <div className="mileage-inline">
-              <input
-                className="mileage-inline-input"
-                type="number"
-                value={newMileage}
-                onChange={(e) => setNewMileage(e.target.value)}
-              />
-              <span className="mileage-inline-unit">км</span>
-              {Number(newMileage) !== Number(mileage) && (
-                <button className="mileage-save-inline" onClick={saveMileage}>✓</button>
-              )}
+
+          <div className="mx-hero-bottom">
+            <div>
+              <div className="mx-brand">MOTRIX</div>
+              <div className="mx-car-title">{vehicle.brand} {vehicle.model}</div>
+              <div className="mx-car-specs">
+                {[vehicle.year, vehicle.engine, vehicle.transmission, vehicle.drive, vehicle.color].filter(Boolean).slice(0, 4).map((v) => <span key={v}>{v}</span>)}
+              </div>
             </div>
-            <div className={`health-pill ${hc}`}>
-              <span className="health-pill-bar">
-                <span className="health-pill-fill" style={{ width: `${healthScore}%` }} />
-              </span>
-              <span className="health-pill-label">{healthScore}%</span>
-            </div>
+            <button className={`mx-score ${hc}`} onClick={() => setSheet("health")}>{healthScore}%</button>
           </div>
         </div>
       </div>
 
-      {/* AI status sentence */}
-      {statusSentence && (
-        <div className="status-sentence">{statusSentence}</div>
-      )}
+      <button className="mx-mileage-card" onClick={() => setSheet("mileage")}> 
+        <span>Пробег</span>
+        <div className="mx-mileage-edit" onClick={(e) => e.stopPropagation()}>
+          <input
+            className="mileage-inline-input mx-mileage-input"
+            type="number"
+            value={newMileage}
+            onChange={(e) => setNewMileage(e.target.value)}
+          />
+          <b>км</b>
+          {Number(newMileage) !== Number(mileage) && <button className="mx-save" onClick={saveMileage}>✓</button>}
+        </div>
+      </button>
 
-      {/* Reminder card */}
+      <button className={`mx-priority-tile ${problems.length ? "attention" : "calm"}`} onClick={() => setSheet("problems")}>
+        <span className="mx-priority-kicker">AI-приоритеты</span>
+        <strong>{problems.length ? `${problems.length} ${problems.length === 1 ? "проблема" : "проблемы"}` : "Всё спокойно"}</strong>
+        <small>{problems.length ? `${highCount} срочно · ${mediumCount} важно` : statusSentence || "Регламент выглядит нормально"}</small>
+        <span className="mx-chevron">›</span>
+      </button>
+
       {topReminder && (
-        <div className={`reminder-card ${topReminder.priority}`}>
-          <div className="reminder-title">{topReminder.title}</div>
-          <div className="reminder-msg">{topReminder.message}</div>
-          <div className="reminder-actions">
-            <button className="reminder-btn-done" onClick={() => onReminderDone(topReminder.id)}>
-              Выполнено
-            </button>
-            <button className="reminder-btn-dismiss" onClick={() => onReminderDismiss(topReminder.id)}>✕</button>
+        <button className={`mx-reminder ${topReminder.priority}`} onClick={() => setSheet("reminder")}>
+          <div>
+            <b>{topReminder.title}</b>
+            <span>{topReminder.message}</span>
           </div>
-        </div>
+          <span className="mx-chevron">›</span>
+        </button>
       )}
 
-      {/* Single primary action with WHY */}
-      <PrimaryActionCard
-        action={primaryAction}
-        mileage={mileage}
-        onScan={onScan}
-        isParsingDoc={isParsingDoc}
-      />
+      <div className="mx-action-grid">
+        <button className="mx-mini-card" onClick={() => setSheet("forecast")}>
+          <span>Расходы</span>
+          <strong>{costForecast?.next6Months > 0 ? rub(costForecast.next6Months) : "—"}</strong>
+          <small>на 6 месяцев</small>
+        </button>
+        <button className="mx-mini-card" onClick={() => setSheet("upcoming")}>
+          <span>Следующее</span>
+          <strong>{nextItem?.name || "Нет"}</strong>
+          <small>{nextItem?.left ? `~${km(nextItem.left)}` : "план чист"}</small>
+        </button>
+      </div>
 
-      {/* Additional urgent items (compact) */}
-      {urgentActions?.length > 1 && (
-        <div className="urgent-secondary-list">
-          <div className="urgent-secondary-label">Также требует внимания</div>
-          {urgentActions.slice(1, 4).map((u) => (
-            <div className="urgent-secondary-row" key={u.id || u.name}>
-              <span className={`urgent-rest-dot sev-${u.severity}`} />
-              <span className="urgent-secondary-name">{u.name}</span>
-              <span className="urgent-secondary-km">
-                {u.status === "Просрочено"
-                  ? `Просрочено ${km(Math.abs(u.left))}`
-                  : `Через ~${km(u.left)}`}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* All good state */}
-      {!primaryAction && urgentActions?.length === 0 && (
-        <div className="status-ok-card">
-          <span className="status-ok-dot" />
-          <span className="status-ok-text">Всё в норме</span>
-        </div>
-      )}
-
-      {/* Upcoming */}
-      {upcomingItems?.length > 0 && (
-        <div className="section-block">
-          <div className="section-label">Скоро</div>
-          {upcomingItems.slice(0, 3).map((item) => (
-            <div className="upcoming-row" key={item.id || item.name}>
-              <span className="upcoming-name">{item.name}</span>
-              <span className="upcoming-km">~{km(item.left)}</span>
-              {item.estimatedMonths > 0 && (
-                <span className="upcoming-months">~{item.estimatedMonths} мес</span>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Cost forecast */}
-      {mileagePace > 0 && (costForecast?.next6Months > 0 || costForecast?.nextYear > 0) && (
-        <div className="section-block">
-          <div className="section-label">Прогноз расходов</div>
-          <div className="cost-grid">
-            <div className="cost-col">
-              <div className="cost-period">Месяц</div>
-              <div className="cost-value">{costForecast.nextMonth > 0 ? rub(costForecast.nextMonth) : "—"}</div>
-            </div>
-            <div className="cost-col">
-              <div className="cost-period">6 месяцев</div>
-              <div className="cost-value">{costForecast.next6Months > 0 ? rub(costForecast.next6Months) : "—"}</div>
-            </div>
-            <div className="cost-col">
-              <div className="cost-period">Год</div>
-              <div className="cost-value">{costForecast.nextYear > 0 ? rub(costForecast.nextYear) : "—"}</div>
-            </div>
-          </div>
-          {mileagePaceData?.source === "history" && (
-            <div className="pace-source">
-              Темп {mileagePace.toLocaleString("ru-RU")} км/мес
-              {mileagePaceData.confidence === "high" ? " · высокая точность" : mileagePaceData.confidence === "medium" ? " · средняя точность" : " · низкая точность"}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Last known event */}
-      {lastService && (
-        <div className="last-event-card">
-          <div className="last-event-label">Последнее подтверждённое событие</div>
-          <div className="last-event-title">{lastService.title}</div>
-          <div className="last-event-km">{km(lastService.mileage)}</div>
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="home-actions">
-        <label className={`scan-btn${isParsingDoc ? " loading" : ""}`}>
-          <span className="scan-btn-icon">📷</span>
-          {isParsingDoc ? "Читаю документ..." : "Отсканировать документ"}
+      <div className="mx-action-grid three">
+        <label className={`mx-quick-action ${isParsingDoc ? "loading" : ""}`}>
+          <span>📷</span>
+          <b>{isParsingDoc ? "Читаю" : "СТС/чек"}</b>
           <input type="file" accept="image/*" onChange={onScan} hidden disabled={isParsingDoc} />
         </label>
-        <button className="btn btn-gray" onClick={onManualAdd}>✏️ Добавить вручную</button>
+        <button className="mx-quick-action" onClick={onManualAdd}><span>＋</span><b>Работа</b></button>
+        <button className="mx-quick-action" onClick={() => setSheet("last")}><span>⌁</span><b>История</b></button>
       </div>
 
+      {sheet === "problems" && (
+        <GlassSheet title="AI-приоритеты" subtitle="Каждая строка открывает детали и действия" onClose={closeSheet}>
+          {problems.length ? (
+            <div className="mx-problem-list">
+              {problems.map((problem) => (
+                <ProblemRow key={problem.id || problem.name} problem={problem} onClick={() => openProblem(problem)} />
+              ))}
+            </div>
+          ) : (
+            <div className="mx-empty-state">Критичных проблем не видно. Продолжайте вести журнал обслуживания.</div>
+          )}
+        </GlassSheet>
+      )}
+
+      {sheet === "problem" && selectedProblem && (
+        <GlassSheet title="Подробности" subtitle="Причина, риск, покупка и запись" onClose={closeSheet}>
+          <ProblemDetail problem={selectedProblem} vehicle={vehicleWithMileage} onManualAdd={onManualAdd} onScan={onScan} />
+        </GlassSheet>
+      )}
+
+      {sheet === "forecast" && (
+        <GlassSheet title="Прогноз расходов" subtitle="Нажмите на строку, чтобы открыть работу" onClose={closeSheet}>
+          <ForecastSheet
+            costForecast={costForecast}
+            mileagePace={mileagePace}
+            mileagePaceData={mileagePaceData}
+            problems={[...(urgentActions || []), ...(upcomingItems || [])]}
+            onOpenProblem={openProblem}
+          />
+        </GlassSheet>
+      )}
+
+      {sheet === "upcoming" && (
+        <GlassSheet title="Ближайшее обслуживание" subtitle="Работы, которые появятся в горизонте" onClose={closeSheet}>
+          {(upcomingItems || []).slice(0, 5).map((item) => <ProblemRow key={item.id || item.name} problem={item} onClick={() => openProblem(item)} />)}
+          {(!upcomingItems || upcomingItems.length === 0) && <div className="mx-empty-state">На ближайшие месяцы явных работ не найдено.</div>}
+        </GlassSheet>
+      )}
+
+      {sheet === "last" && (
+        <GlassSheet title="История" subtitle="Последнее подтверждённое обслуживание" onClose={closeSheet}>
+          {lastService ? (
+            <button className="mx-last-sheet" onClick={onManualAdd}>
+              <span>Последняя запись</span>
+              <strong>{lastService.title}</strong>
+              <small>{km(lastService.mileage)}</small>
+            </button>
+          ) : <div className="mx-empty-state">История обслуживания пока пустая.</div>}
+        </GlassSheet>
+      )}
+
+      {sheet === "mileage" && (
+        <GlassSheet title="Пробег" subtitle="Пробег влияет на прогноз и приоритеты" onClose={closeSheet}>
+          <div className="mx-detail-block">
+            <div className="mx-detail-label">Текущий пробег</div>
+            <div className="mx-mileage-sheet-row">
+              <input type="number" value={newMileage} onChange={(e) => setNewMileage(e.target.value)} />
+              <button className="mx-service-cta" onClick={saveMileage}>Сохранить</button>
+            </div>
+          </div>
+        </GlassSheet>
+      )}
+
+      {sheet === "health" && (
+        <GlassSheet title="Индекс Motrix" subtitle="Сводный риск по регламенту и истории" onClose={closeSheet}>
+          <div className={`mx-health-big ${hc}`}>{healthScore}%</div>
+          <p className="mx-detail-text">{statusSentence || "Индекс рассчитывается по истории обслуживания, пробегу и регламентным интервалам."}</p>
+        </GlassSheet>
+      )}
+
+      {sheet === "reminder" && topReminder && (
+        <GlassSheet title="Напоминание" subtitle="Можно закрыть или отложить" onClose={closeSheet}>
+          <div className={`mx-detail-hero ${topReminder.priority || "medium"}`}>
+            <span>Напоминание</span>
+            <h4>{topReminder.title}</h4>
+            <p>{topReminder.message}</p>
+          </div>
+          <div className="mx-dual-actions">
+            <button onClick={() => { onReminderDone(topReminder.id); closeSheet(); }}>Выполнено</button>
+            <button onClick={() => { onReminderDismiss(topReminder.id); closeSheet(); }}>Скрыть</button>
+          </div>
+        </GlassSheet>
+      )}
     </div>
   );
 }
