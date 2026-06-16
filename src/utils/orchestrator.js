@@ -171,6 +171,7 @@ function generateStatusSentence(vehicle, schedule, data, monthlyKm) {
   const overdue = schedule.filter((s) => s.status === "Просрочено");
   const soon = schedule.filter((s) => s.status === "Скоро");
   const critUnknown = schedule.filter((s) => s.lastMileage === 0 && s.severity === "high");
+  const historyMode = getHistoryMode(ownerProfile);
   const highOverdue = overdue.filter((s) => s.severity === "high");
 
   if (highOverdue.length > 0) {
@@ -194,12 +195,57 @@ function generateStatusSentence(vehicle, schedule, data, monthlyKm) {
   return `${name} в хорошем состоянии. Регламент соблюдён.`;
 }
 
-// ── Primary action (single most important thing) ──────────────────────────────
-function primaryActionAgent(schedule, urgentActions, unknownAreas, data, mileage) {
-  const currentMileage = Number(mileage || 0);
 
-  // 1. High-severity overdue
-  const highOverdue = urgentActions.filter((i) => i.status === "Просрочено" && i.severity === "high");
+function getHistoryMode(ownerProfile = {}) {
+  const firstOwner = ownerProfile?.firstOwner;
+  const knowledge = ownerProfile?.historyKnowledge;
+  const historyMode = ownerProfile?.historyMode;
+
+  if (historyMode) return { historyMode, firstOwner, knowledge };
+  if (firstOwner === "yes" && knowledge === "full") return { historyMode: "first-owner-known", firstOwner, knowledge };
+  if (firstOwner === "yes") return { historyMode: "first-owner-partial", firstOwner, knowledge: knowledge || "partial" };
+  if (knowledge === "full") return { historyMode: "used-known", firstOwner, knowledge };
+  if (knowledge === "partial") return { historyMode: "used-partial", firstOwner, knowledge };
+  if (knowledge === "none") return { historyMode: "used-unknown", firstOwner, knowledge };
+  return { historyMode: "unknown", firstOwner, knowledge };
+}
+
+function historyQuestionnaireAction(title = "Заполните историю авто", reason = "Motrix нужно понять, что известно об обслуживании, чтобы не превращать отсутствие чеков в ложные проблемы.") {
+  return {
+    type: "history_questionnaire",
+    severity: "medium",
+    title,
+    why: { reason },
+  };
+}
+
+// ── Primary action (single most important thing) ──────────────────────────────
+function primaryActionAgent(schedule, urgentActions, unknownAreas, data, mileage, ownerProfile) {
+  const currentMileage = Number(mileage || 0);
+  const { historyMode, knowledge } = getHistoryMode(ownerProfile);
+  const hasLogs = Boolean(data?.logs?.length);
+
+  // 1. If the car has no journal yet, do not pretend every unknown service item is a separate defect.
+  // First ask for ownership/history context. For a used car with unknown past, switch to baseline inspection mode.
+  if (!hasLogs) {
+    if (historyMode === "used-unknown" || knowledge === "none") {
+      return {
+        type: "used_unknown",
+        severity: "high",
+        title: "Б/у авто без истории",
+        why: {
+          reason: "История обслуживания неизвестна. Motrix будет рекомендовать базовую диагностику и нулевое ТО, а не делать вид, что знает прошлые замены.",
+        },
+      };
+    }
+    return historyQuestionnaireAction(
+      "Заполните быструю историю",
+      "Вы указали, что история известна или частично известна. Ответьте на несколько вопросов, чтобы Motrix не показывал ложные 'нет данных'."
+    );
+  }
+
+  // 2. High-severity overdue confirmed by existing journal data.
+  const highOverdue = urgentActions.filter((i) => i.status === "Просрочено" && i.severity === "high" && i.lastMileage > 0);
   if (highOverdue.length > 0) {
     const item = highOverdue[0];
     return {
@@ -216,8 +262,8 @@ function primaryActionAgent(schedule, urgentActions, unknownAreas, data, mileage
     };
   }
 
-  // 2. Any overdue
-  const anyOverdue = urgentActions.find((i) => i.status === "Просрочено");
+  // 3. Any confirmed overdue.
+  const anyOverdue = urgentActions.find((i) => i.status === "Просрочено" && i.lastMileage > 0);
   if (anyOverdue) {
     return {
       type: "overdue",
@@ -233,25 +279,24 @@ function primaryActionAgent(schedule, urgentActions, unknownAreas, data, mileage
     };
   }
 
-  // 3. No history at all
-  if (!data?.logs?.length) {
-    return {
-      type: "scan",
-      severity: "medium",
-      title: "Добавьте историю обслуживания",
-      why: { reason: "AutoPulse не может отслеживать состояние без записей. Отсканируйте документы СТО или добавьте записи вручную." },
-    };
-  }
-
-  // 4. Critical unknowns
-  const critGap = unknownAreas.find((i) => i.severity === "high");
-  if (critGap) {
-    return {
-      type: "scan",
-      severity: "medium",
-      title: "Загрузите документы СТО",
-      why: { reason: `Нет данных о ${critGap.name.toLowerCase()} — критически важный узел. Загрузите чеки или добавьте вручную.` },
-    };
+  // 4. Unknown critical history is not automatically a defect.
+  // If the owner knows history, ask for quick details. If the owner does not know history, use used-car baseline mode.
+  const criticalUnknowns = unknownAreas.filter((i) => i.severity === "high");
+  if (criticalUnknowns.length > 0) {
+    if (historyMode === "used-unknown" || knowledge === "none") {
+      return {
+        type: "used_unknown",
+        severity: "high",
+        title: "Проверить б/у авто после покупки",
+        why: {
+          reason: "Есть важные узлы без подтверждённой истории. Для б/у автомобиля это не 'поломка', а повод сделать базовую диагностику и зафиксировать новую точку отсчёта.",
+        },
+      };
+    }
+    return historyQuestionnaireAction(
+      "Уточните историю обслуживания",
+      `История есть, но Motrix не знает детали по важным узлам: ${criticalUnknowns.slice(0, 3).map((i) => i.name.toLowerCase()).join(", ")}. Заполните короткую анкету или добавьте документы.`
+    );
   }
 
   // 5. Coming soon (high severity)
@@ -295,10 +340,15 @@ function briefingAgent({ vehicle, schedule, data, ownerProfile, analysis, monthl
   const overdue = schedule.filter((s) => s.status === "Просрочено");
   const soon = schedule.filter((s) => s.status === "Скоро");
   const critUnknown = schedule.filter((s) => s.lastMileage === 0 && s.severity === "high");
+  const historyMode = getHistoryMode(ownerProfile);
   const costF = costAgent(schedule, monthlyKm);
   const parts = [];
 
-  if (overdue.length > 0) {
+  if (!data?.logs?.length && historyMode.historyMode === "used-unknown") {
+    parts.push(`${name}: история обслуживания неизвестна. Рекомендуется базовая диагностика и нулевое ТО.`);
+  } else if (!data?.logs?.length) {
+    parts.push(`${name}: заполните быструю историю обслуживания, чтобы Motrix начал считать точнее.`);
+  } else if (overdue.length > 0) {
     const top = [...overdue].sort((a, b) => (a.severity === "high" ? -1 : 1))[0];
     parts.push(`${name}: ${top.name.toLowerCase()} просрочено на ${Math.abs(top.left).toLocaleString("ru-RU")} км.`);
     if (overdue.length > 1) parts.push(`Ещё ${overdue.length - 1} просроченных позиций.`);
@@ -427,7 +477,7 @@ export function computeOrchestratorState({ vehicle, profile, data, ownerProfile,
         .slice(0, 3);
 
   const unknownAreas = schedule.filter((i) => i.lastMileage === 0 || i.status === "Нет данных");
-  const primaryAction = primaryActionAgent(schedule, urgentActions, unknownAreas, data, data?.mileage);
+  const primaryAction = primaryActionAgent(schedule, urgentActions, unknownAreas, data, data?.mileage, ownerProfile);
   const insights = ownershipInsights(schedule, data, totalSpent, vehicle);
 
   // vehicleBrain — single source of truth consumed by all screens

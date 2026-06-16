@@ -18,6 +18,8 @@ function severityLabel(severity) {
 }
 
 function statusWord(problem) {
+  if (problem?.type === "history_questionnaire") return "Анкета";
+  if (problem?.type === "used_unknown") return "Б/у";
   if (problem?.status === "Просрочено") return "Просрочено";
   if (problem?.status === "Скоро") return "Скоро";
   if (problem?.status === "Нет данных" || problem?.type === "scan") return "Нет данных";
@@ -36,6 +38,8 @@ function problemTone(problem) {
 
 function problemShort(problem) {
   if (!problem) return "";
+  if (problem.type === "history_questionnaire") return "3–5 быстрых вопросов";
+  if (problem.type === "used_unknown") return "Нужна новая точка отсчёта";
   if (problem.status === "Просрочено") return `Перепробег ${km(Math.abs(problem.left || 0))}`;
   if (problem.status === "Скоро") return `Осталось ~${km(problem.left || 0)}`;
   if (problem.type === "scan" || problem.status === "Нет данных") return "Нужно добавить историю";
@@ -45,6 +49,8 @@ function problemShort(problem) {
 }
 
 function riskText(problem) {
+  if (problem?.type === "history_questionnaire") return "Сейчас Motrix не знает, что вы реально знаете об автомобиле. Анкета помогает не путать отсутствие чека с отсутствием обслуживания.";
+  if (problem?.type === "used_unknown") return "Для б/у автомобиля без истории главный риск не конкретная одна замена, а неопределённость прошлого обслуживания. Лучше создать новую точку отсчёта: диагностика, базовые жидкости и журнал с этого момента.";
   const name = problemName(problem).toLowerCase();
   if (problem?.type === "scan" || problem?.status === "Нет данных") return "Motrix не видит подтверждённых записей. Риск в том, что реальное состояние узла неизвестно.";
   if (name.includes("масло")) return "Если игнорировать, растёт износ двигателя и стоимость будущего ремонта.";
@@ -173,9 +179,9 @@ function ServiceBookingBlock({ problem, vehicle }) {
   );
 }
 
-function ProblemDetail({ problem, vehicle, onManualAdd, onScan }) {
+function ProblemDetail({ problem, vehicle, onManualAdd, onScan, onOpenProfile }) {
   const tone = problemTone(problem);
-  const isUnknown = problem?.type === "scan" || problem?.status === "Нет данных";
+  const isUnknown = problem?.type === "scan" || problem?.type === "history_questionnaire" || problem?.type === "used_unknown" || problem?.status === "Нет данных";
   const drivenSince = problem?.lastMileage > 0 ? Number(vehicle?.mileage || 0) - Number(problem.lastMileage) : null;
 
   return (
@@ -205,8 +211,9 @@ function ProblemDetail({ problem, vehicle, onManualAdd, onScan }) {
       {isUnknown ? (
         <div className="mx-commerce-block service">
           <div className="mx-block-title">Добавить данные</div>
-          <p>Загрузите чек, заказ-наряд или добавьте обслуживание вручную. Так Motrix перестанет гадать и начнёт считать точно.</p>
+          <p>{problem?.type === "used_unknown" ? "Если история б/у автомобиля неизвестна, Motrix не будет гадать. Сначала зафиксируем режим: базовая диагностика, нулевое ТО и журнал с текущего момента." : "Заполните короткую анкету, загрузите чек, заказ-наряд или добавьте обслуживание вручную. Так Motrix перестанет гадать и начнёт считать точнее."}</p>
           <div className="mx-dual-actions">
+            {onOpenProfile && <button onClick={onOpenProfile}>Быстрая анкета</button>}
             <label>
               Загрузить документ
               <input type="file" accept="image/*" onChange={onScan} hidden />
@@ -271,6 +278,7 @@ export default function HomeScreen({
   isParsingDoc,
   onScan,
   onManualAdd,
+  onOpenProfile,
   onReminderDismiss,
   onReminderDone,
 }) {
@@ -280,16 +288,18 @@ export default function HomeScreen({
   const topReminder = reminders?.find((r) => r.status === "active");
 
   const problems = useMemo(() => {
-    const items = [...(urgentActions || [])];
-    if (items.length === 0 && primaryAction?.type === "scan") {
+    const confirmed = (urgentActions || []).filter((item) => item.lastMileage > 0 || item.status !== "Нет данных");
+    const items = [...confirmed];
+    if (items.length === 0 && ["scan", "history_questionnaire", "used_unknown"].includes(primaryAction?.type)) {
       items.push({
-        id: "scan-history",
+        id: primaryAction.type === "used_unknown" ? "used-unknown-baseline" : "history-questionnaire",
         name: primaryAction.title,
         title: primaryAction.title,
-        type: "scan",
+        type: primaryAction.type,
         severity: primaryAction.severity || "medium",
-        status: "Нет данных",
+        status: primaryAction.type === "used_unknown" ? "История неизвестна" : "Нужна анкета",
         left: 0,
+        why: primaryAction.why,
       });
     }
     return items.slice(0, 5);
@@ -407,7 +417,7 @@ export default function HomeScreen({
 
       {sheet === "problem" && selectedProblem && (
         <GlassSheet title="Подробности" subtitle="Причина, риск, покупка и запись" onClose={closeSheet}>
-          <ProblemDetail problem={selectedProblem} vehicle={vehicleWithMileage} onManualAdd={onManualAdd} onScan={onScan} />
+          <ProblemDetail problem={selectedProblem} vehicle={vehicleWithMileage} onManualAdd={onManualAdd} onScan={onScan} onOpenProfile={onOpenProfile} />
         </GlassSheet>
       )}
 

@@ -591,7 +591,6 @@ export default function App() {
       <div className="topbar">
         <span className="topbar-brand">Motrix</span>
         {isAnalyzing && <span className="topbar-analyzing">Анализирую...</span>}
-        <button className="icon-btn" onClick={() => setTab("more")}>⚙️</button>
       </div>
 
       {/* Owner profile onboarding */}
@@ -693,6 +692,7 @@ export default function App() {
           isParsingDoc={isParsingDoc}
           onScan={parseServiceDocument}
           onManualAdd={() => openManualForm()}
+          onOpenProfile={() => setProfileOnboardingOpen(true)}
           onReminderDismiss={handleReminderDismiss}
           onReminderDone={handleReminderDone}
         />
