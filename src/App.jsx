@@ -7,8 +7,11 @@ import AiScreen from "./components/AiScreen";
 import MoreScreen from "./components/MoreScreen";
 import OnboardingProfile from "./components/OnboardingProfile";
 import WelcomeScreen from "./components/WelcomeScreen";
+import HouseHubScreen from "./components/HouseHubScreen.jsx";
+import DocumentsScreen from "./components/DocumentsScreen.jsx";
 import { sanitizeVehicleForm, validateVehicleForm } from "./vehicleCatalog.js";
 import { computeOrchestratorState } from "./utils/orchestrator.js";
+import { buildEstateCoreState } from "./core/estateCore.js";
 import { generateReminders, dismissReminder, doneReminder, getActiveReminders } from "./utils/reminders.js";
 import "./App.css";
 
@@ -166,6 +169,11 @@ export default function App() {
   const orch = useMemo(() => computeOrchestratorState({
     vehicle, profile, data, ownerProfile, analysis, defaultRules: DEFAULT_RULES,
   }), [vehicle, profile, data, ownerProfile, analysis]);
+
+  // ── Estate core — AI-home layer over garage, documents and future rooms ─────
+  const estate = useMemo(() => buildEstateCoreState({
+    vehicle, vehicleBrain: orch, reminders, data, ownerProfile, analysis,
+  }), [vehicle, orch, reminders, data, ownerProfile, analysis]);
 
   // ── Reminders — regenerate when schedule changes ──────────────────────────
   useEffect(() => {
@@ -671,6 +679,19 @@ export default function App() {
 
       {/* Screens */}
       {tab === "home" && (
+        <HouseHubScreen
+          estate={estate}
+          vehicle={vehicle}
+          vehicleBrain={orch}
+          reminders={reminders}
+          onOpenGarage={() => setTab("garage")}
+          onOpenDocs={() => setTab("docs")}
+          onOpenAi={() => setTab("ai")}
+          onOpenProfile={() => setProfileOnboardingOpen(true)}
+          onManualAdd={() => openManualForm()}
+        />
+      )}
+      {tab === "garage" && (
         <HomeScreen
           vehicle={vehicle}
           mileage={data.mileage}
@@ -695,6 +716,17 @@ export default function App() {
           onOpenProfile={() => setProfileOnboardingOpen(true)}
           onReminderDismiss={handleReminderDismiss}
           onReminderDone={handleReminderDone}
+        />
+      )}
+      {tab === "docs" && (
+        <DocumentsScreen
+          estate={estate}
+          vehicle={vehicle}
+          data={data}
+          ownerProfile={ownerProfile}
+          analysis={analysis}
+          onScan={parseServiceDocument}
+          isParsingDoc={isParsingDoc}
         />
       )}
       {tab === "journal" && (
