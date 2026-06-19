@@ -1,0 +1,66 @@
+export const SENSE_DEVICE_GROUPS = [
+  {
+    id: "garage-obd",
+    zone: "garage",
+    title: "OBD / ELM",
+    productName: "Garage Link",
+    status: "MVP-ready",
+    description: "Постоянный или ручной контроль ошибок, напряжения АКБ, пробега и базовых PID.",
+    signals: ["DTC ошибки", "напряжение АКБ", "температура ОЖ", "пробег", "чек двигателя"],
+    userValue: "Авто само сообщает, что с ним происходит, а не ждёт следующего ТО.",
+  },
+  {
+    id: "garage-security",
+    zone: "garage",
+    title: "Сигнализация",
+    productName: "Security Bridge",
+    status: "partner-api",
+    description: "StarLine/Pandora-подобные системы: тревога, поездки, координаты, АКБ, события охраны.",
+    signals: ["тревога", "низкий АКБ", "поездки", "охрана", "геособытия"],
+    userValue: "Гараж становится живым: машина докладывает о поездках и тревогах.",
+  },
+  {
+    id: "home-leak",
+    zone: "home",
+    title: "Протечки и климат",
+    productName: "Home Sense",
+    status: "white-label",
+    description: "Датчики протечки, температуры, влажности, дыма и качества воздуха.",
+    signals: ["протечка", "влажность", "температура", "дым/CO", "качество воздуха"],
+    userValue: "Дом предупреждает о рисках до ремонта на сотни тысяч.",
+  },
+  {
+    id: "home-meter",
+    zone: "home",
+    title: "Счётчики",
+    productName: "Meter Link",
+    status: "integration",
+    description: "Импульсные счётчики, NB-IoT/LoRaWAN/M-Bus и ручные показания через фото.",
+    signals: ["вода", "электричество", "газ", "тепло", "аномальный расход"],
+    userValue: "Расходы и утечки видны до получения неприятной квитанции.",
+  },
+  {
+    id: "pet-chip",
+    zone: "pet",
+    title: "Чип питомца",
+    productName: "Pet Gate",
+    status: "concept",
+    description: "LF RFID-считыватель, кормушка или домашняя станция, которая узнаёт питомца по чипу.",
+    signals: ["идентификация", "кормление", "вес", "визиты", "режим ухода"],
+    userValue: "Чип становится не просто номером в ветпаспорте, а ключом к цифровому уходу.",
+  },
+  {
+    id: "industrial",
+    zone: "devices",
+    title: "АСУ ТП / инженерка",
+    productName: "Control Bridge",
+    status: "b2b-later",
+    description: "Modbus/MQTT/OPC UA, насосы, котельные, склады, стройка и коммерческие объекты.",
+    signals: ["давление", "температура", "авария", "реле", "потребление"],
+    userValue: "Для B2B: раннее предупреждение аварий, простоев и лишних расходов.",
+  },
+];
+
+export function senseGroupsByZone(zoneId) {
+  return SENSE_DEVICE_GROUPS.filter((group) => group.zone === zoneId);
+}

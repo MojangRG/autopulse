@@ -9,6 +9,9 @@ import OnboardingProfile from "./components/OnboardingProfile";
 import WelcomeScreen from "./components/WelcomeScreen";
 import HouseHubScreen from "./components/HouseHubScreen.jsx";
 import DocumentsScreen from "./components/DocumentsScreen.jsx";
+import HomeAssetScreen from "./components/HomeAssetScreen.jsx";
+import PetAssetScreen from "./components/PetAssetScreen.jsx";
+import SenseScreen from "./components/SenseScreen.jsx";
 import { sanitizeVehicleForm, validateVehicleForm } from "./vehicleCatalog.js";
 import { computeOrchestratorState } from "./utils/orchestrator.js";
 import { buildEstateCoreState } from "./core/estateCore.js";
@@ -687,6 +690,9 @@ export default function App() {
           onOpenGarage={() => setTab("garage")}
           onOpenDocs={() => setTab("docs")}
           onOpenAi={() => setTab("ai")}
+          onOpenHome={() => setTab("room-home")}
+          onOpenPet={() => setTab("pet")}
+          onOpenDevices={() => setTab("devices")}
           onOpenProfile={() => setProfileOnboardingOpen(true)}
           onManualAdd={() => openManualForm()}
         />
@@ -727,6 +733,31 @@ export default function App() {
           analysis={analysis}
           onScan={parseServiceDocument}
           isParsingDoc={isParsingDoc}
+        />
+      )}
+      {tab === "room-home" && (
+        <HomeAssetScreen
+          estate={estate}
+          onOpenDevices={() => setTab("devices")}
+          onOpenDocs={() => setTab("docs")}
+          onOpenAi={() => setTab("ai")}
+        />
+      )}
+      {tab === "pet" && (
+        <PetAssetScreen
+          estate={estate}
+          onOpenDevices={() => setTab("devices")}
+          onOpenDocs={() => setTab("docs")}
+          onOpenAi={() => setTab("ai")}
+        />
+      )}
+      {tab === "devices" && (
+        <SenseScreen
+          estate={estate}
+          onOpenGarage={() => setTab("garage")}
+          onOpenHome={() => setTab("room-home")}
+          onOpenPet={() => setTab("pet")}
+          onOpenAi={() => setTab("ai")}
         />
       )}
       {tab === "journal" && (

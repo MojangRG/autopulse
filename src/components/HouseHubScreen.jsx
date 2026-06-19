@@ -4,37 +4,72 @@ function rub(v) { return Number(v || 0).toLocaleString("ru-RU") + " ₽"; }
 function km(v) { return Number(v || 0).toLocaleString("ru-RU") + " км"; }
 
 function zoneClass(zone) {
-  return ["estate-zone-card", zone.tone || "neutral", zone.enabled ? "enabled" : "locked"].join(" ");
+  return ["estate-zone-card", zone.tone || "neutral", zone.enabled ? "enabled" : "locked", zone.color || ""].join(" ");
 }
 
 function taskToneClass(task) {
   return `estate-task-card ${task.tone || "neutral"}`;
 }
 
-export default function HouseHubScreen({ estate, vehicle, vehicleBrain, reminders, onOpenGarage, onOpenDocs, onOpenAi, onOpenProfile, onManualAdd }) {
+export default function HouseHubScreen({
+  estate,
+  vehicle,
+  vehicleBrain,
+  reminders,
+  onOpenGarage,
+  onOpenDocs,
+  onOpenAi,
+  onOpenProfile,
+  onManualAdd,
+  onOpenHome,
+  onOpenPet,
+  onOpenDevices,
+}) {
   const zones = estate?.zones || [];
   const tasks = estate?.tasks || [];
+  const setupTasks = estate?.setupTasks || [];
   const garage = estate?.garage || {};
 
   function openZone(zone) {
     if (zone.id === "garage" && onOpenGarage) return onOpenGarage();
     if (zone.id === "docs" && onOpenDocs) return onOpenDocs();
+    if (zone.id === "home" && onOpenHome) return onOpenHome();
+    if (zone.id === "pet" && onOpenPet) return onOpenPet();
+    if (zone.id === "devices" && onOpenDevices) return onOpenDevices();
+  }
+
+  function openTask(task) {
+    if (task.route === "garage") return onOpenGarage?.();
+    if (task.route === "docs") return onOpenDocs?.();
+    if (task.route === "room-home") return onOpenHome?.();
+    if (task.route === "pet") return onOpenPet?.();
+    if (task.route === "devices") return onOpenDevices?.();
   }
 
   return (
     <div className="mx-page estate-hub-page">
-      <section className={`estate-hero ${estate?.estateTone || "neutral"}`}>
+      <section className={`estate-hero estate-tamagotchi ${estate?.estateTone || "neutral"}`}>
         <div className="estate-hero-glow" />
         <div className="estate-hero-top">
-          <span>AI-ДОМ ИМУЩЕСТВА</span>
+          <span>{estate?.concept || "AI-дом имущества"}</span>
           <b>{estate?.estateScore || 0}%</b>
         </div>
         <h1>{estate?.estateName || "Мой дом"}</h1>
         <p>{estate?.todaySummary || "Собираем состояние ваших важных объектов."}</p>
+
+        <div className="estate-house-map" aria-label="Карта AI-дома">
+          {zones.map((zone) => (
+            <button key={zone.id} className={`estate-room-dot ${zone.id} ${zone.tone || "neutral"}`} onClick={() => openZone(zone)}>
+              <span>{zone.emoji}</span>
+              <b>{zone.title}</b>
+            </button>
+          ))}
+        </div>
+
         <div className="estate-hero-actions">
-          <button onClick={onOpenGarage}>Открыть гараж</button>
-          <button onClick={onOpenDocs}>Документы</button>
-          <button onClick={onOpenAi}>Спросить AI</button>
+          <button onClick={onOpenGarage}>Гараж</button>
+          <button onClick={onOpenHome}>Дом</button>
+          <button onClick={onOpenDevices}>Sense</button>
         </div>
       </section>
 
@@ -63,12 +98,15 @@ export default function HouseHubScreen({ estate, vehicle, vehicleBrain, reminder
 
       <section className="estate-zone-grid">
         {zones.map((zone) => (
-          <button key={zone.id} className={zoneClass(zone)} onClick={() => openZone(zone)} disabled={!zone.enabled}>
+          <button key={zone.id} className={zoneClass(zone)} onClick={() => openZone(zone)}>
             <div className="estate-zone-icon">{zone.emoji}</div>
             <div className="estate-zone-main">
               <span>{zone.title}</span>
               <strong>{zone.status}</strong>
               <small>{zone.subtitle}</small>
+              <div className="estate-zone-signal-row">
+                {(zone.liveSignals || []).slice(0, 3).map((signal) => <em key={signal}>{signal}</em>)}
+              </div>
             </div>
             <div className="estate-zone-metric">
               <b>{zone.primaryMetric}</b>
@@ -85,7 +123,7 @@ export default function HouseHubScreen({ estate, vehicle, vehicleBrain, reminder
 
       <section className="estate-task-list">
         {tasks.length ? tasks.map((task) => (
-          <button key={task.id} className={taskToneClass(task)} onClick={onOpenGarage}>
+          <button key={task.id} className={taskToneClass(task)} onClick={() => openTask(task)}>
             <span>{task.zone === "garage" ? "Гараж" : "Дом"}</span>
             <strong>{task.title}</strong>
             <small>{task.subtitle}</small>
@@ -97,15 +135,24 @@ export default function HouseHubScreen({ estate, vehicle, vehicleBrain, reminder
             <span>Сейчас нет срочных сигналов. Добавляйте документы и события, Motrix будет держать порядок.</span>
           </div>
         )}
+
+        {setupTasks.map((task) => (
+          <button key={task.id} className={taskToneClass(task)} onClick={() => openTask(task)}>
+            <span>Следующий слой</span>
+            <strong>{task.title}</strong>
+            <small>{task.subtitle}</small>
+            <em>{task.cta}</em>
+          </button>
+        ))}
       </section>
 
       <section className="estate-sense-card">
         <div>
           <span>MOTRIX SENSE</span>
           <h3>Нервная система дома</h3>
-          <p>Готовим слой подключений: ELM/OBD, StarLine, датчики протечки, счётчики, умные розетки, Pet Gate и ASU TP. Устройства будут не “гаджетами”, а источниками событий для AI-дома.</p>
+          <p>Гараж, дом и питомец смогут получать живые сигналы от OBD, сигнализаций, счётчиков, датчиков, Pet Gate и промышленных контроллеров.</p>
         </div>
-        <button onClick={onOpenDocs}>Смотреть концепт</button>
+        <button onClick={onOpenDevices}>Открыть Sense</button>
       </section>
 
       <section className="estate-quick-actions">

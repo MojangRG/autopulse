@@ -33,6 +33,27 @@ export default function DocumentsScreen({ estate, vehicle, data, ownerProfile, a
       status: analysis ? "готово" : "ожидает данных",
       tone: analysis ? "good" : "neutral",
     },
+    {
+      id: "home-docs",
+      title: "Дом и гарантии",
+      subtitle: "Договоры ремонта, техника, счётчики, фильтры, инструкции",
+      status: "контур готов",
+      tone: "warn",
+    },
+    {
+      id: "pet-docs",
+      title: "Питомец",
+      subtitle: "Ветпаспорт, чип, прививки, назначения, чеки",
+      status: "следующая комната",
+      tone: "warn",
+    },
+    {
+      id: "sense-docs",
+      title: "Motrix Sense",
+      subtitle: "Паспорта устройств, серийники, интеграции и гарантии железа",
+      status: "каталог устройств",
+      tone: "neutral",
+    },
   ];
 
   return (
