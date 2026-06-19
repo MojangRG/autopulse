@@ -1,48 +1,35 @@
 import "../motrix-ui.css";
 
-const HOME_ZONES = [
-  { id: "water", icon: "≈", title: "Вода", subtitle: "счётчики · фильтры · протечки", status: "датчик протечки — первый must-have", tone: "blue" },
-  { id: "power", icon: "ϟ", title: "Электрика", subtitle: "розетки · нагрузка · техника", status: "энергомонитор покажет лишний расход", tone: "green" },
-  { id: "climate", icon: "◒", title: "Климат", subtitle: "кондиционер · влажность · фильтры", status: "сезонные задачи и профилактика", tone: "violet" },
-  { id: "warranty", icon: "▤", title: "Гарантии", subtitle: "чеки · договоры · инструкции", status: "всё уходит в Vault", tone: "slate" },
-];
+function ActionBlock({ title, subtitle, onClick, accent }) {
+  return <button className={`tg-action-block ${accent || ""}`} onClick={onClick}><span>{title}</span><small>{subtitle}</small></button>;
+}
+function StateBlock({ title, value, subtitle, accent }) {
+  return <div className={`tg-state-block ${accent || ""}`}><span>{title}</span><strong>{value}</strong><small>{subtitle}</small></div>;
+}
 
 export default function HomeAssetScreen({ estate, onOpenSense, onOpenDocs, onOpenAi }) {
   return (
-    <div className="mx-page plata-room-page">
-      <section className="plata-room-hero violet">
-        <span>Motrix Home</span>
-        <h1>Дом</h1>
-        <p>Комната для счётчиков, техники, фильтров, протечек, гарантий и умного дома. Здесь рождается бытовой контур AI-дома.</p>
-        <div className="plata-hero-actions">
-          <button onClick={onOpenSense}>Подключить Sense</button>
-          <button onClick={onOpenDocs}>Документы</button>
+    <div className="mx-page tg-page tg-room-page">
+      <section className="tg-room-hero home good">
+        <div className="tg-room-hero-copy">
+          <span>Дом</span>
+          <h1>Инженерка и быт</h1>
+          <p>Здесь живут счётчики, протечки, техника, фильтры, гарантии и всё, что наполняет дом.</p>
         </div>
+        <div className="tg-room-score"><b>72%</b><small>контроль</small></div>
       </section>
 
-      <div className="plata-section-head">
-        <div>
-          <span>Контур дома</span>
-          <b>Что будет под контролем</b>
-        </div>
-      </div>
-
-      <section className="plata-feature-grid">
-        {HOME_ZONES.map((item, index) => (
-          <button key={item.id} className={`plata-feature-card ${item.tone}`} style={{ "--delay": `${index * 50}ms` }}>
-            <span>{item.icon}</span>
-            <strong>{item.title}</strong>
-            <small>{item.subtitle}</small>
-            <em>{item.status}</em>
-          </button>
-        ))}
+      <section className="tg-room-states">
+        <StateBlock title="Вода" value="датчики" subtitle="протечки, фильтры, счётчики" accent="home" />
+        <StateBlock title="Электрика" value="энергия" subtitle="розетки, нагрузка, техника" accent="signal" />
+        <StateBlock title="Гарантии" value="Vault" subtitle="чеки, договоры, инструкции" accent="passport" />
       </section>
 
-      <section className="plata-scenario-card">
-        <span>Сценарий</span>
-        <h3>Дом предупредил раньше аварии</h3>
-        <p>Датчик протечки даёт сигнал, Motrix поднимает срочную карточку, показывает где сработало, какие документы открыть и что делать дальше.</p>
-        <button onClick={onOpenAi}>Смоделировать через AI</button>
+      <section className="tg-action-grid-simple">
+        <ActionBlock title="Добавить событие" subtitle="ремонт, гарантия, обслуживание" accent="primary" />
+        <ActionBlock title="Добавить устройства" subtitle="датчики, счётчики, умный дом" onClick={onOpenSense} accent="soft" />
+        <ActionBlock title="AI-дворецкий" subtitle="спросить про дом и быт" onClick={onOpenAi} accent="ai" />
+        <ActionBlock title="Паспорт дома" subtitle="состав, техника, документы" onClick={onOpenDocs} accent="passport" />
       </section>
     </div>
   );

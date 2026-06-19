@@ -1,56 +1,35 @@
 import "../motrix-ui.css";
 
-const PET_ITEMS = [
-  { id: "chip", title: "Чип", icon: "◌", text: "RFID-чип — ключ личности питомца, но не GPS. Его ловит отдельный считыватель." },
-  { id: "passport", title: "Ветпаспорт", icon: "▤", text: "Прививки, обработки, назначения и чеки ветеринара живут в Vault." },
-  { id: "food", title: "Кормление", icon: "◍", text: "Кормушка или Pet Gate отмечают подход питомца и режим питания." },
-  { id: "care", title: "Уход", icon: "✦", text: "Вес, груминг, лекарства, визиты и напоминания без ручной каши." },
-];
+function ActionBlock({ title, subtitle, onClick, accent }) {
+  return <button className={`tg-action-block ${accent || ""}`} onClick={onClick}><span>{title}</span><small>{subtitle}</small></button>;
+}
+function StateBlock({ title, value, subtitle, accent }) {
+  return <div className={`tg-state-block ${accent || ""}`}><span>{title}</span><strong>{value}</strong><small>{subtitle}</small></div>;
+}
 
 export default function PetAssetScreen({ estate, onOpenSense, onOpenDocs, onOpenAi }) {
   return (
-    <div className="mx-page plata-room-page">
-      <section className="plata-room-hero amber">
-        <span>Motrix Pet</span>
-        <h1>Питомец</h1>
-        <p>Личный паспорт заботы: чип, ветпаспорт, прививки, корм, вес и устройства Pet Gate.</p>
-        <div className="plata-hero-actions">
-          <button onClick={onOpenSense}>Pet Gate</button>
-          <button onClick={onOpenDocs}>Ветпаспорт</button>
+    <div className="mx-page tg-page tg-room-page">
+      <section className="tg-room-hero pet warn">
+        <div className="tg-room-hero-copy">
+          <span>Питомец</span>
+          <h1>Здоровье и уход</h1>
+          <p>Чип, ветпаспорт, прививки, корм, вес и Pet Gate. Всё важное без ручной каши.</p>
         </div>
+        <div className="tg-room-score"><b>68%</b><small>забота</small></div>
       </section>
 
-      <section className="plata-pet-card">
-        <div className="plata-pet-avatar">🐾</div>
-        <div>
-          <span>Будущий питомец</span>
-          <strong>Добавьте имя, чип и ветпаспорт</strong>
-          <small>Пока это концепт-комната. Следующий шаг — форма паспорта и календарь прививок.</small>
-        </div>
+      <section className="tg-room-states">
+        <StateBlock title="Чип" value="RFID" subtitle="ключ личности питомца" accent="pet" />
+        <StateBlock title="Ветпаспорт" value="Vault" subtitle="прививки и назначения" accent="passport" />
+        <StateBlock title="Режим" value="Pet Gate" subtitle="корм, вода, вес" accent="signal" />
       </section>
 
-      <div className="plata-section-head">
-        <div>
-          <span>Повседневный коннект</span>
-          <b>Что может ловить приложение</b>
-        </div>
-      </div>
-
-      <section className="plata-feature-grid">
-        {PET_ITEMS.map((item, index) => (
-          <button key={item.id} className="plata-feature-card amber" style={{ "--delay": `${index * 50}ms` }}>
-            <span>{item.icon}</span>
-            <strong>{item.title}</strong>
-            <small>{item.text}</small>
-          </button>
-        ))}
-      </section>
-
-      <section className="plata-scenario-card amber">
-        <span>Идея устройства</span>
-        <h3>Pet Gate / умная миска</h3>
-        <p>Считыватель чипа понимает, какой питомец подошёл. Motrix получает событие и строит дневник ухода без ручного ввода.</p>
-        <button onClick={onOpenAi}>Развить идею</button>
+      <section className="tg-action-grid-simple">
+        <ActionBlock title="Добавить событие" subtitle="прививка, визит, лекарство" accent="primary" />
+        <ActionBlock title="Добавить устройства" subtitle="Pet Gate, миска, весы" onClick={onOpenSense} accent="soft" />
+        <ActionBlock title="AI-дворецкий" subtitle="спросить про уход" onClick={onOpenAi} accent="ai" />
+        <ActionBlock title="Паспорт питомца" subtitle="чип, ветпаспорт, история" onClick={onOpenDocs} accent="passport" />
       </section>
     </div>
   );

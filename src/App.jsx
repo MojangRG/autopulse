@@ -805,6 +805,9 @@ export default function App() {
           onScan={parseServiceDocument}
           onManualAdd={() => openManualForm()}
           onOpenProfile={() => setProfileOnboardingOpen(true)}
+          onOpenPassport={() => setTab("passport")}
+          onOpenDevices={() => setTab("sense")}
+          onOpenAi={() => setTab("ai")}
           onReminderDismiss={handleReminderDismiss}
           onReminderDone={handleReminderDone}
         />
@@ -818,31 +821,6 @@ export default function App() {
           analysis={analysis}
           onScan={parseServiceDocument}
           isParsingDoc={isParsingDoc}
-        />
-      )}
-      {tab === "room-home" && (
-        <HomeAssetScreen
-          estate={estate}
-          onOpenDevices={() => setTab("devices")}
-          onOpenDocs={() => setTab("docs")}
-          onOpenAi={() => setTab("ai")}
-        />
-      )}
-      {tab === "pet" && (
-        <PetAssetScreen
-          estate={estate}
-          onOpenDevices={() => setTab("devices")}
-          onOpenDocs={() => setTab("docs")}
-          onOpenAi={() => setTab("ai")}
-        />
-      )}
-      {tab === "devices" && (
-        <SenseScreen
-          estate={estate}
-          onOpenGarage={() => setTab("garage")}
-          onOpenHome={() => setTab("room-home")}
-          onOpenPet={() => setTab("pet")}
-          onOpenAi={() => setTab("ai")}
         />
       )}
       {tab === "journal" && vehicle && (

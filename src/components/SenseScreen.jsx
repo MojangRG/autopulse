@@ -1,57 +1,37 @@
 import "../motrix-ui.css";
-import { SENSE_CATALOG } from "../core/senseCatalog.js";
 
-function tone(item) {
-  return `plata-sense-item ${item.tone || "slate"}`;
-}
+const DEVICES = [
+  { title: "Гараж", value: "OBD / StarLine", text: "ошибки, пробег, АКБ, поездки" },
+  { title: "Дом", value: "датчики", text: "протечки, счётчики, розетки, климат" },
+  { title: "Питомец", value: "Pet Gate", text: "чип, корм, вода, вес" },
+];
 
-export default function SenseScreen({ estate, onOpenGarage, onOpenDocs, onOpenAi }) {
+export default function SenseScreen({ onOpenGarage, onOpenHome, onOpenPet }) {
   return (
-    <div className="mx-page plata-sense-page">
-      <section className="plata-room-hero green">
-        <span>Motrix Sense</span>
-        <h1>Устройства</h1>
-        <p>Нервная система AI-дома: авто, дом, питомец и инженерка получают живые сигналы от внешних устройств.</p>
-        <div className="plata-hero-actions">
-          <button onClick={onOpenGarage}>Гараж</button>
-          <button onClick={onOpenDocs}>Vault</button>
+    <div className="mx-page tg-page tg-room-page">
+      <section className="tg-room-hero sense good">
+        <div className="tg-room-hero-copy">
+          <span>Motrix Sense</span>
+          <h1>Устройства</h1>
+          <p>Нервная система AI-дома. Подключения добавляются внутри дома, гаража и питомца.</p>
         </div>
+        <div className="tg-room-score"><b>3</b><small>контуры</small></div>
       </section>
 
-      <section className="plata-sense-map">
-        <div><span>1</span><b>Устройство</b><small>OBD, датчик, счётчик, Pet Gate</small></div>
-        <div><span>2</span><b>Сигнал</b><small>ошибка, расход, чип, авария</small></div>
-        <div><span>3</span><b>AI-действие</b><small>объяснение, риск, задача, документ</small></div>
-      </section>
-
-      <div className="plata-section-head">
-        <div>
-          <span>Каталог подключений</span>
-          <b>Что можно продавать и интегрировать</b>
-        </div>
-        <small>{SENSE_CATALOG.length} направлений</small>
-      </div>
-
-      <section className="plata-sense-list">
-        {SENSE_CATALOG.map((item, index) => (
-          <button key={item.id} className={tone(item)} style={{ "--delay": `${index * 45}ms` }}>
-            <div className="plata-sense-item-head">
-              <span>{item.type}</span>
-              <em>{item.status}</em>
-            </div>
-            <strong>{item.title}</strong>
-            <small>{item.signal}</small>
-            <p>{item.value}</p>
-            <b>{item.cta}</b>
-          </button>
+      <section className="tg-room-states">
+        {DEVICES.map((item) => (
+          <div key={item.title} className="tg-state-block signal">
+            <span>{item.title}</span>
+            <strong>{item.value}</strong>
+            <small>{item.text}</small>
+          </div>
         ))}
       </section>
 
-      <section className="plata-scenario-card green">
-        <span>Принцип</span>
-        <h3>Не гаджет ради гаджета</h3>
-        <p>Каждое устройство должно создавать событие в AI-доме: что произошло, насколько это важно, сколько может стоить и что делать дальше.</p>
-        <button onClick={onOpenAi}>Спросить AI</button>
+      <section className="tg-action-grid-simple">
+        <button className="tg-action-block soft" onClick={onOpenGarage}><span>В гараж</span><small>добавить OBD или сигнализацию</small></button>
+        <button className="tg-action-block soft" onClick={onOpenHome}><span>В дом</span><small>добавить датчики и счётчики</small></button>
+        <button className="tg-action-block soft" onClick={onOpenPet}><span>К питомцу</span><small>Pet Gate и чип</small></button>
       </section>
     </div>
   );
