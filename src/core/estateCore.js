@@ -1,5 +1,5 @@
-import { ESTATE_ZONES } from "./assetTypes.js";
-import { SENSE_DEVICE_GROUPS, senseGroupsByZone } from "./senseCatalog.js";
+import { ASSET_ROOMS } from "./assetTypes.js";
+import { SENSE_CATALOG, getSenseByRoom } from "./senseCatalog.js";
 
 const RUB = new Intl.NumberFormat("ru-RU");
 
@@ -34,7 +34,6 @@ function getGarageTasks(vehicleBrain = {}, reminders = []) {
       subtitle: vehicleBrain.statusSentence || vehicleBrain.primaryAction?.why?.reason || "Открыть гараж и проверить рекомендацию",
       tone: vehicleBrain.primaryAction.severity === "high" ? "bad" : "warn",
       cta: "Открыть гараж",
-      route: "garage",
     });
   }
 
@@ -46,7 +45,6 @@ function getGarageTasks(vehicleBrain = {}, reminders = []) {
       subtitle: r.message,
       tone: r.priority === "high" ? "bad" : "warn",
       cta: "Посмотреть",
-      route: "garage",
     });
   }
 
@@ -59,119 +57,141 @@ function getGarageTasks(vehicleBrain = {}, reminders = []) {
       subtitle: next.left > 0 ? `Через ${km(next.left)}` : "Ближайшая работа по регламенту",
       tone: next.severity === "high" ? "warn" : "neutral",
       cta: "План",
-      route: "garage",
     });
   }
 
   return tasks;
 }
 
-function buildRoomCards({ vehicle, vehicleBrain, data, ownerProfile, analysis, docsCount }) {
-  const garageScore = Number(vehicleBrain?.healthScore || 0) || 0;
-  const next6 = Number(vehicleBrain?.costForecast?.next6Months || 0);
+function buildRoomState(room, context) {
+  const { vehicle, vehicleBrain, reminders, data, ownerProfile, analysis, docsCount, garageScore, next6 } = context;
   const hasGarage = Boolean(vehicle?.brand && vehicle?.model);
+  const senseItems = getSenseByRoom(room.id);
 
-  const roomState = {
-    garage: {
+  if (room.id === "garage") {
+    return {
+      ...room,
+      status: hasGarage ? `${safeVehicleTitle(vehicle)} · ${garageScore}%` : "Добавьте автомобиль",
+      subtitle: hasGarage ? (vehicleBrain?.statusSentence || "Авто под контролем") : room.description,
       score: hasGarage ? garageScore : 0,
       tone: hasGarage ? zoneTone(garageScore) : "neutral",
-      status: hasGarage ? `${safeVehicleTitle(vehicle)} · ${garageScore}%` : "Добавьте автомобиль",
-      subtitle: hasGarage ? (vehicleBrain?.statusSentence || "Авто под контролем") : "AI-паспорт авто, ТО, расходы, OBD и сигнализация",
       primaryMetric: next6 > 0 ? rub(next6) : "ТО и расходы",
       metricLabel: next6 > 0 ? "прогноз 6 мес" : "ожидают данных",
-      liveSignals: hasGarage ? ["пробег", "регламент", "расходы"] : ["VIN", "СТС", "анкета"],
-    },
-    home: {
-      score: 58,
-      tone: "warn",
-      status: "Контур готов",
-      subtitle: "Добавьте счётчики, технику, фильтры и датчики протечки",
-      primaryMetric: "0",
-      metricLabel: "датчиков",
-      liveSignals: ["счётчики", "протечки", "гарантии"],
-    },
-    pet: {
-      score: 52,
-      tone: "warn",
-      status: "Паспорт скоро",
-      subtitle: "Чип, ветпаспорт, прививки, корм и Pet Gate",
-      primaryMetric: "Pet Gate",
-      metricLabel: "идентификация",
-      liveSignals: ["чип", "прививки", "корм"],
-    },
-    docs: {
+      signalCount: (reminders || []).length + senseItems.length,
+      senseItems,
+    };
+  }
+
+  if (room.id === "docs") {
+    return {
+      ...room,
+      status: docsCount > 0 ? `${docsCount} в базе` : "Пусто",
+      subtitle: "Единая память: документы, чеки, договоры, гарантии и AI-досье.",
       score: docsCount > 0 ? Math.min(95, 55 + docsCount * 8) : 35,
       tone: docsCount > 0 ? "good" : "warn",
-      status: docsCount > 0 ? `${docsCount} в базе` : "Пусто",
-      subtitle: "СТС, чеки, заказ-наряды, гарантии, страховки и AI-досье",
       primaryMetric: `${docsCount}`,
-      metricLabel: "записей и документов",
-      liveSignals: ["фото", "чеки", "гарантии"],
-    },
-    devices: {
-      score: 50,
-      tone: "warn",
-      status: "Каталог Sense",
-      subtitle: "OBD, StarLine, датчики, счётчики, Pet Gate и ASU TP",
-      primaryMetric: `${SENSE_DEVICE_GROUPS.length}`,
-      metricLabel: "типов устройств",
-      liveSignals: ["BLE", "API", "IoT"],
-    },
-  };
+      metricLabel: "элементов",
+      signalCount: docsCount,
+      senseItems,
+    };
+  }
 
-  return ESTATE_ZONES.map((zone) => ({
-    ...zone,
-    emoji: zone.icon,
-    ...(roomState[zone.id] || {}),
-  }));
+  if (room.id === "home") {
+    return {
+      ...room,
+      status: "Черновик дома",
+      subtitle: "Добавьте счётчики, датчики, фильтры, технику и гарантии.",
+      score: 48,
+      tone: "warn",
+      primaryMetric: "4 зоны",
+      metricLabel: "вода · свет · климат",
+      signalCount: senseItems.length,
+      senseItems,
+    };
+  }
+
+  if (room.id === "pet") {
+    return {
+      ...room,
+      status: "Паспорт питомца",
+      subtitle: "Чип, прививки, кормление, вес и визиты к ветеринару.",
+      score: 44,
+      tone: "warn",
+      primaryMetric: "Pet Gate",
+      metricLabel: "чип и уход",
+      signalCount: senseItems.length,
+      senseItems,
+    };
+  }
+
+  return {
+    ...room,
+    status: "Каталог Sense",
+    subtitle: "Устройства дают AI-дому живые сигналы вместо ручного ввода.",
+    score: 52,
+    tone: "warn",
+    primaryMetric: `${SENSE_CATALOG.length}`,
+    metricLabel: "коннекторов",
+    signalCount: SENSE_CATALOG.length,
+    senseItems,
+  };
 }
 
 export function buildEstateCoreState({ vehicle, vehicleBrain, reminders, data, ownerProfile, analysis }) {
   const garageScore = Number(vehicleBrain?.healthScore || 0) || 0;
   const garageTasks = getGarageTasks(vehicleBrain, reminders);
   const docsCount = (data?.logs?.length || 0) + (vehicle ? 1 : 0) + (ownerProfile?.completedAt ? 1 : 0) + (analysis ? 1 : 0);
+  const next6 = Number(vehicleBrain?.costForecast?.next6Months || 0);
   const hasGarage = Boolean(vehicle?.brand && vehicle?.model);
 
-  const rooms = buildRoomCards({ vehicle, vehicleBrain, data, ownerProfile, analysis, docsCount });
-  const setupTasks = [
+  const context = { vehicle, vehicleBrain, reminders, data, ownerProfile, analysis, docsCount, garageScore, next6 };
+  const zones = ASSET_ROOMS.map((room) => buildRoomState(room, context));
+
+  const seedTasks = [
     {
-      id: "setup-home-meter",
+      id: "home-seed",
       zone: "home",
-      title: "Подготовить Дом",
-      subtitle: "Счётчики, фильтры, техника и протечки станут следующей комнатой AI-дома.",
+      title: "Собрать паспорт дома",
+      subtitle: "Начните с протечки, счётчиков, фильтров и гарантий техники.",
       tone: "neutral",
-      cta: "Открыть Дом",
-      route: "room-home",
+      cta: "Открыть дом",
     },
     {
-      id: "setup-sense",
-      zone: "devices",
-      title: "Подключить устройства",
-      subtitle: "OBD, StarLine, счётчики и Pet Gate будут давать живые сигналы.",
+      id: "pet-seed",
+      zone: "pet",
+      title: "Подготовить паспорт питомца",
+      subtitle: "Чип, прививки, кормление и ветпаспорт будут жить в одной комнате.",
       tone: "neutral",
-      cta: "Motrix Sense",
-      route: "devices",
+      cta: "Открыть питомца",
+    },
+    {
+      id: "sense-seed",
+      zone: "devices",
+      title: "Motrix Sense",
+      subtitle: "OBD, StarLine, датчики, счётчики и Pet Gate станут нервной системой дома.",
+      tone: "warn",
+      cta: "Устройства",
     },
   ];
 
-  const activeTasks = [...garageTasks];
+  const activeTasks = [...garageTasks, ...seedTasks].slice(0, 7);
+  const docsScore = docsCount > 0 ? 75 : 45;
   const estateScore = hasGarage
-    ? Math.min(98, Math.round((garageScore * 0.55) + ((docsCount > 0 ? 75 : 45) * 0.25) + 12))
+    ? Math.round((garageScore * 0.52) + (docsScore * 0.22) + (48 * 0.16) + (44 * 0.10))
     : 42;
 
-  const todaySummary = activeTasks.length
-    ? `${activeTasks.length} ${activeTasks.length === 1 ? "задача" : "задачи"} требуют внимания`
-    : "Сегодня всё спокойно. Дом имущества под контролем.";
+  const todaySummary = garageTasks.length
+    ? `${garageTasks.length} ${garageTasks.length === 1 ? "сигнал" : "сигнала"} от гаража и ${seedTasks.length} комнаты готовы к настройке`
+    : "Дом имущества собран. Подключите комнаты и датчики, чтобы он стал живым.";
 
   return {
     estateName: "Мой дом",
-    concept: "AI-тамагочи имущества",
+    concept: "AI-дом имущества",
     estateScore,
     estateTone: zoneTone(estateScore),
     todaySummary,
-    zones: rooms,
-    tasks: activeTasks.slice(0, 5),
-    setupTasks,
+    zones,
+    tasks: activeTasks,
     docsCount,
     money: {
       nextMonth: vehicleBrain?.costForecast?.nextMonth || 0,
@@ -185,32 +205,11 @@ export function buildEstateCoreState({ vehicle, vehicleBrain, reminders, data, o
       nextAction: vehicleBrain?.primaryAction,
       statusSentence: vehicleBrain?.statusSentence,
     },
-    home: {
-      systems: [
-        { id: "water", title: "Вода", status: "счётчики и протечки", tone: "warn", metric: "0 датчиков" },
-        { id: "climate", title: "Климат", status: "фильтры, влажность, кондиционер", tone: "neutral", metric: "сезон" },
-        { id: "power", title: "Электрика", status: "нагрузка и умные розетки", tone: "neutral", metric: "энергия" },
-        { id: "warranty", title: "Гарантии", status: "техника, ремонт, договоры", tone: docsCount > 0 ? "good" : "warn", metric: "Vault" },
-      ],
-      senseGroups: senseGroupsByZone("home"),
-    },
-    pet: {
-      profileStatus: "готовим паспорт питомца",
-      senseGroups: senseGroupsByZone("pet"),
-      cards: [
-        { id: "chip", title: "Чип", status: "ID питомца", detail: "LF RFID 134,2 кГц через Pet Gate/считыватель" },
-        { id: "vet", title: "Ветпаспорт", status: "прививки и визиты", detail: "фото паспорта → события ухода" },
-        { id: "food", title: "Корм", status: "режим и вес", detail: "кормушка/весы фиксируют повседневный уход" },
-      ],
-    },
-    devices: {
-      groups: SENSE_DEVICE_GROUPS,
-      readyCount: SENSE_DEVICE_GROUPS.filter((g) => g.status === "MVP-ready").length,
-    },
+    senseCatalog: SENSE_CATALOG,
     roadmap: [
-      "Гараж: текущий Motrix остаётся первой живой комнатой",
+      "Гараж: текущий Motrix становится первой живой комнатой",
       "Дом: счётчики, фильтры, протечки, техника и гарантии",
-      "Питомец: чип, ветпаспорт, прививки, корм и Pet Gate",
+      "Питомец: чип, ветпаспорт, прививки, корм и Pet Station",
       "Устройства: OBD, StarLine, умный дом, счётчики и ASU TP",
     ],
   };

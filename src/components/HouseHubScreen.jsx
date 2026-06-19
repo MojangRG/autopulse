@@ -3,12 +3,20 @@ import "../motrix-ui.css";
 function rub(v) { return Number(v || 0).toLocaleString("ru-RU") + " ₽"; }
 function km(v) { return Number(v || 0).toLocaleString("ru-RU") + " км"; }
 
-function zoneClass(zone) {
-  return ["estate-zone-card", zone.tone || "neutral", zone.enabled ? "enabled" : "locked", zone.color || ""].join(" ");
+function zoneClass(zone, index) {
+  return ["plata-room-card", zone.gradient || "slate", zone.tone || "neutral", zone.enabled ? "enabled" : "locked"].join(" ");
 }
 
 function taskToneClass(task) {
-  return `estate-task-card ${task.tone || "neutral"}`;
+  return `plata-task-row ${task.tone || "neutral"}`;
+}
+
+function zoneLabel(zone) {
+  if (zone.id === "garage") return "Гараж";
+  if (zone.id === "home") return "Дом";
+  if (zone.id === "pet") return "Питомец";
+  if (zone.id === "devices") return "Sense";
+  return "Vault";
 }
 
 export default function HouseHubScreen({
@@ -21,110 +29,112 @@ export default function HouseHubScreen({
   onOpenAi,
   onOpenProfile,
   onManualAdd,
-  onOpenHome,
-  onOpenPet,
-  onOpenDevices,
+  onOpenZone,
 }) {
   const zones = estate?.zones || [];
   const tasks = estate?.tasks || [];
-  const setupTasks = estate?.setupTasks || [];
   const garage = estate?.garage || {};
 
   function openZone(zone) {
+    if (onOpenZone) return onOpenZone(zone.id);
     if (zone.id === "garage" && onOpenGarage) return onOpenGarage();
     if (zone.id === "docs" && onOpenDocs) return onOpenDocs();
-    if (zone.id === "home" && onOpenHome) return onOpenHome();
-    if (zone.id === "pet" && onOpenPet) return onOpenPet();
-    if (zone.id === "devices" && onOpenDevices) return onOpenDevices();
-  }
-
-  function openTask(task) {
-    if (task.route === "garage") return onOpenGarage?.();
-    if (task.route === "docs") return onOpenDocs?.();
-    if (task.route === "room-home") return onOpenHome?.();
-    if (task.route === "pet") return onOpenPet?.();
-    if (task.route === "devices") return onOpenDevices?.();
   }
 
   return (
-    <div className="mx-page estate-hub-page">
-      <section className={`estate-hero estate-tamagotchi ${estate?.estateTone || "neutral"}`}>
-        <div className="estate-hero-glow" />
-        <div className="estate-hero-top">
+    <div className="mx-page plata-hub-page">
+      <section className={`plata-home-hero ${estate?.estateTone || "neutral"}`}>
+        <div className="plata-orb orb-one" />
+        <div className="plata-orb orb-two" />
+        <div className="plata-hero-nav">
           <span>{estate?.concept || "AI-дом имущества"}</span>
-          <b>{estate?.estateScore || 0}%</b>
-        </div>
-        <h1>{estate?.estateName || "Мой дом"}</h1>
-        <p>{estate?.todaySummary || "Собираем состояние ваших важных объектов."}</p>
-
-        <div className="estate-house-map" aria-label="Карта AI-дома">
-          {zones.map((zone) => (
-            <button key={zone.id} className={`estate-room-dot ${zone.id} ${zone.tone || "neutral"}`} onClick={() => openZone(zone)}>
-              <span>{zone.emoji}</span>
-              <b>{zone.title}</b>
-            </button>
-          ))}
+          <button onClick={onOpenAi}>AI</button>
         </div>
 
-        <div className="estate-hero-actions">
-          <button onClick={onOpenGarage}>Гараж</button>
-          <button onClick={onOpenHome}>Дом</button>
-          <button onClick={onOpenDevices}>Sense</button>
+        <div className="plata-hero-copy">
+          <span className="plata-kicker">Добро пожаловать домой</span>
+          <h1>{estate?.estateName || "Мой дом"}</h1>
+          <p>{estate?.todaySummary || "Собираем состояние важных объектов."}</p>
         </div>
+
+        <button className="plata-score-card" onClick={onOpenGarage}>
+          <span>Под контролем</span>
+          <strong>{estate?.estateScore || 0}%</strong>
+          <small>{garage.vehicleTitle || "первый объект"}</small>
+        </button>
       </section>
 
-      <section className="estate-today-strip">
-        <div>
-          <span>Гараж</span>
-          <b>{garage.vehicleTitle || "Авто"}</b>
+      <section className="plata-search-action" onClick={onOpenAi}>
+        <span>⌕</span>
+        <b>Что требует внимания?</b>
+        <small>Спросить AI по дому, гаражу, документам и устройствам</small>
+      </section>
+
+      <section className="plata-action-grid">
+        <button className="plata-action-tile" onClick={onOpenGarage}>
+          <span>▣</span>
+          <b>Гараж</b>
           <small>{garage.mileage ? km(garage.mileage) : "пробег не указан"}</small>
-        </div>
-        <div>
-          <span>Расходы</span>
-          <b>{estate?.money?.next6Months ? rub(estate.money.next6Months) : "—"}</b>
-          <small>6 месяцев</small>
-        </div>
-        <div>
-          <span>Сигналы</span>
-          <b>{reminders?.length || 0}</b>
-          <small>активно</small>
-        </div>
+        </button>
+        <button className="plata-action-tile" onClick={onOpenDocs}>
+          <span>▤</span>
+          <b>Vault</b>
+          <small>{estate?.docsCount || 0} документов</small>
+        </button>
+        <button className="plata-action-tile" onClick={() => onOpenZone?.("devices")}>
+          <span>✺</span>
+          <b>Sense</b>
+          <small>{estate?.senseCatalog?.length || 0} коннекторов</small>
+        </button>
       </section>
 
-      <div className="estate-section-head">
-        <span>Комнаты</span>
-        <small>Каждая зона — отдельный AI-паспорт</small>
+      <div className="plata-section-head">
+        <div>
+          <span>Комнаты</span>
+          <b>Живой дом имущества</b>
+        </div>
+        <small>Нажмите комнату</small>
       </div>
 
-      <section className="estate-zone-grid">
-        {zones.map((zone) => (
-          <button key={zone.id} className={zoneClass(zone)} onClick={() => openZone(zone)}>
-            <div className="estate-zone-icon">{zone.emoji}</div>
-            <div className="estate-zone-main">
-              <span>{zone.title}</span>
-              <strong>{zone.status}</strong>
-              <small>{zone.subtitle}</small>
-              <div className="estate-zone-signal-row">
-                {(zone.liveSignals || []).slice(0, 3).map((signal) => <em key={signal}>{signal}</em>)}
-              </div>
+      <section className="plata-room-grid">
+        {zones.map((zone, index) => (
+          <button
+            key={zone.id}
+            className={zoneClass(zone, index)}
+            style={{ "--delay": `${index * 55}ms` }}
+            onClick={() => openZone(zone)}
+          >
+            <div className="plata-room-top">
+              <span className="plata-room-icon">{zone.icon || zone.emoji}</span>
+              <em>{zone.kicker || zoneLabel(zone)}</em>
             </div>
-            <div className="estate-zone-metric">
+            <strong>{zone.title}</strong>
+            <small>{zone.subtitle}</small>
+            <div className="plata-room-bottom">
               <b>{zone.primaryMetric}</b>
-              <em>{zone.metricLabel}</em>
+              <i>{zone.metricLabel}</i>
             </div>
           </button>
         ))}
       </section>
 
-      <div className="estate-section-head">
-        <span>Сегодня</span>
-        <small>Что важно, чтобы не попасть на деньги</small>
+      <div className="plata-section-head">
+        <div>
+          <span>Сегодня</span>
+          <b>Сигналы и следующие действия</b>
+        </div>
+        <small>{tasks.length} карточек</small>
       </div>
 
-      <section className="estate-task-list">
-        {tasks.length ? tasks.map((task) => (
-          <button key={task.id} className={taskToneClass(task)} onClick={() => openTask(task)}>
-            <span>{task.zone === "garage" ? "Гараж" : "Дом"}</span>
+      <section className="plata-task-stack">
+        {tasks.length ? tasks.map((task, index) => (
+          <button
+            key={task.id}
+            className={taskToneClass(task)}
+            style={{ "--delay": `${index * 45}ms` }}
+            onClick={() => onOpenZone?.(task.zone === "devices" ? "devices" : task.zone)}
+          >
+            <span>{zoneLabel({ id: task.zone })}</span>
             <strong>{task.title}</strong>
             <small>{task.subtitle}</small>
             <em>{task.cta}</em>
@@ -132,33 +142,24 @@ export default function HouseHubScreen({
         )) : (
           <div className="estate-empty-card">
             <b>Дом спокоен</b>
-            <span>Сейчас нет срочных сигналов. Добавляйте документы и события, Motrix будет держать порядок.</span>
+            <span>Сейчас нет срочных сигналов. Добавляйте документы и устройства, Motrix будет держать порядок.</span>
           </div>
         )}
-
-        {setupTasks.map((task) => (
-          <button key={task.id} className={taskToneClass(task)} onClick={() => openTask(task)}>
-            <span>Следующий слой</span>
-            <strong>{task.title}</strong>
-            <small>{task.subtitle}</small>
-            <em>{task.cta}</em>
-          </button>
-        ))}
       </section>
 
-      <section className="estate-sense-card">
+      <section className="plata-sense-banner" onClick={() => onOpenZone?.("devices")}>
         <div>
-          <span>MOTRIX SENSE</span>
-          <h3>Нервная система дома</h3>
-          <p>Гараж, дом и питомец смогут получать живые сигналы от OBD, сигнализаций, счётчиков, датчиков, Pet Gate и промышленных контроллеров.</p>
+          <span>Motrix Sense</span>
+          <h3>Вещи сами докладывают о состоянии</h3>
+          <p>OBD, StarLine, датчики протечки, счётчики, умные розетки и Pet Gate станут нервной системой AI-дома.</p>
         </div>
-        <button onClick={onOpenDevices}>Открыть Sense</button>
+        <button>Открыть</button>
       </section>
 
-      <section className="estate-quick-actions">
-        <button onClick={onOpenProfile}>Быстрая история авто</button>
-        <button onClick={onManualAdd}>Добавить событие</button>
-        <button onClick={onOpenAi}>Что требует внимания?</button>
+      <section className="plata-quick-strip">
+        <button onClick={onOpenProfile}>История авто</button>
+        <button onClick={onManualAdd}>Событие</button>
+        <button onClick={onOpenAi}>AI-вопрос</button>
       </section>
     </div>
   );

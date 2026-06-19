@@ -33,52 +33,42 @@ export default function DocumentsScreen({ estate, vehicle, data, ownerProfile, a
       status: analysis ? "готово" : "ожидает данных",
       tone: analysis ? "good" : "neutral",
     },
-    {
-      id: "home-docs",
-      title: "Дом и гарантии",
-      subtitle: "Договоры ремонта, техника, счётчики, фильтры, инструкции",
-      status: "контур готов",
-      tone: "warn",
-    },
-    {
-      id: "pet-docs",
-      title: "Питомец",
-      subtitle: "Ветпаспорт, чип, прививки, назначения, чеки",
-      status: "следующая комната",
-      tone: "warn",
-    },
-    {
-      id: "sense-docs",
-      title: "Motrix Sense",
-      subtitle: "Паспорта устройств, серийники, интеграции и гарантии железа",
-      status: "каталог устройств",
-      tone: "neutral",
-    },
+  ];
+
+  const futureDocs = [
+    "Гарантии техники",
+    "Договор ремонта",
+    "Страховки",
+    "Ветпаспорт",
+    "Счётчики",
+    "Паспорта устройств",
   ];
 
   return (
-    <div className="mx-page estate-docs-page">
-      <div className="mx-page-head">
-        <span>MOTRIX VAULT</span>
-        <h2>Документы</h2>
-        <p>Единая память AI-дома: СТС, чеки, гарантии, страховки, договоры и будущие паспорта дома/питомца.</p>
-      </div>
+    <div className="mx-page estate-docs-page plata-docs-page">
+      <section className="plata-room-hero slate">
+        <span>Motrix Vault</span>
+        <h1>Документы</h1>
+        <p>Единая память AI-дома: СТС, чеки, гарантии, страховки, договоры, ветпаспорт и паспорта устройств.</p>
+      </section>
 
-      <label className={`estate-upload-card ${isParsingDoc ? "loading" : ""}`}>
-        <span>{isParsingDoc ? "Читаю документ" : "Загрузить чек / заказ-наряд"}</span>
-        <strong>{isParsingDoc ? "AI разбирает строки" : "Фото документа → событие в журнал"}</strong>
-        <small>Пока поддерживаем изображения. PDF и договоры добавим в слой Motrix Vault.</small>
+      <label className={`plata-upload-card ${isParsingDoc ? "loading" : ""}`}>
+        <span>{isParsingDoc ? "AI читает документ" : "Загрузить документ"}</span>
+        <strong>{isParsingDoc ? "Разбираю строки и смысл" : "Фото → событие, паспорт или задача"}</strong>
+        <small>Сейчас: сервисные чеки и заказ-наряды. Следом: PDF, гарантии, договоры и ветпаспорт.</small>
         <input type="file" accept="image/*" onChange={onScan} hidden disabled={isParsingDoc} />
       </label>
 
-      <div className="estate-section-head">
-        <span>Хранилище</span>
-        <small>{estate?.docsCount || 0} элементов в базе</small>
+      <div className="plata-section-head">
+        <div>
+          <span>Хранилище</span>
+          <b>{estate?.docsCount || 0} элементов в базе</b>
+        </div>
       </div>
 
-      <section className="estate-doc-grid">
-        {docCards.map((card) => (
-          <button key={card.id} className={`estate-doc-card ${card.tone}`}>
+      <section className="plata-doc-grid">
+        {docCards.map((card, index) => (
+          <button key={card.id} className={`plata-doc-card ${card.tone}`} style={{ "--delay": `${index * 50}ms` }}>
             <span>{card.title}</span>
             <strong>{card.status}</strong>
             <small>{card.subtitle}</small>
@@ -86,11 +76,10 @@ export default function DocumentsScreen({ estate, vehicle, data, ownerProfile, a
         ))}
       </section>
 
-      <section className="estate-sense-card compact">
+      <section className="plata-vault-roadmap">
+        <span>Следующий слой Vault</span>
         <div>
-          <span>СКОРО</span>
-          <h3>Документы всего дома</h3>
-          <p>Гарантии техники, договоры ремонта, страховки, ветпаспорт, документы на устройства Motrix Sense и счётчики будут жить здесь.</p>
+          {futureDocs.map((item) => <b key={item}>{item}</b>)}
         </div>
       </section>
     </div>

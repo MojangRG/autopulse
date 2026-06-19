@@ -1,56 +1,65 @@
-export const ESTATE_ZONES = [
+export const ASSET_ROOMS = [
   {
     id: "garage",
-    route: "garage",
+    tab: "garage",
     title: "Гараж",
+    kicker: "Motrix Garage",
     icon: "▣",
-    short: "Авто",
-    promise: "ТО, расходы, документы, OBD и сигнализация",
-    color: "blue",
+    gradient: "blue",
     enabled: true,
+    description: "Авто, ТО, расходы, документы, OBD и сигнализации.",
+    emptyAction: "Добавить автомобиль",
   },
   {
     id: "home",
-    route: "room-home",
+    tab: "house",
     title: "Дом",
+    kicker: "Motrix Home",
     icon: "⌂",
-    short: "Быт",
-    promise: "Счётчики, протечки, техника, фильтры и гарантии",
-    color: "green",
+    gradient: "violet",
     enabled: true,
+    description: "Счётчики, протечки, техника, фильтры, гарантии и умный дом.",
+    emptyAction: "Собрать дом",
   },
   {
     id: "pet",
-    route: "pet",
+    tab: "pet",
     title: "Питомец",
+    kicker: "Motrix Pet",
     icon: "◌",
-    short: "Уход",
-    promise: "Чип, ветпаспорт, прививки, корм и Pet Gate",
-    color: "yellow",
+    gradient: "amber",
     enabled: true,
+    description: "Чип, ветпаспорт, прививки, корм, вес и Pet Gate.",
+    emptyAction: "Добавить питомца",
   },
   {
     id: "docs",
-    route: "docs",
+    tab: "docs",
     title: "Документы",
+    kicker: "Motrix Vault",
     icon: "▤",
-    short: "Vault",
-    promise: "СТС, чеки, гарантии, страховки, договоры и инструкции",
-    color: "violet",
+    gradient: "slate",
     enabled: true,
+    description: "СТС, чеки, договоры, гарантии, страховки и AI-досье.",
+    emptyAction: "Загрузить документ",
   },
   {
     id: "devices",
-    route: "devices",
+    tab: "sense",
     title: "Устройства",
+    kicker: "Motrix Sense",
     icon: "✺",
-    short: "Sense",
-    promise: "OBD, StarLine, счётчики, датчики, Pet Gate и ASU TP",
-    color: "cyan",
+    gradient: "green",
     enabled: true,
+    description: "OBD, StarLine, датчики дома, счётчики, Pet Gate и ASU TP.",
+    emptyAction: "Подключить устройство",
   },
 ];
 
-export function getEstateZone(id) {
-  return ESTATE_ZONES.find((zone) => zone.id === id);
+export function getRoomById(id) {
+  return ASSET_ROOMS.find((room) => room.id === id) || ASSET_ROOMS[0];
+}
+
+export function getTabForRoom(id) {
+  return getRoomById(id).tab || "home";
 }

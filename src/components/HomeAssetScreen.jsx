@@ -1,60 +1,48 @@
 import "../motrix-ui.css";
 
-export default function HomeAssetScreen({ estate, onOpenDevices, onOpenDocs, onOpenAi }) {
-  const systems = estate?.home?.systems || [];
-  const groups = estate?.home?.senseGroups || [];
+const HOME_ZONES = [
+  { id: "water", icon: "≈", title: "Вода", subtitle: "счётчики · фильтры · протечки", status: "датчик протечки — первый must-have", tone: "blue" },
+  { id: "power", icon: "ϟ", title: "Электрика", subtitle: "розетки · нагрузка · техника", status: "энергомонитор покажет лишний расход", tone: "green" },
+  { id: "climate", icon: "◒", title: "Климат", subtitle: "кондиционер · влажность · фильтры", status: "сезонные задачи и профилактика", tone: "violet" },
+  { id: "warranty", icon: "▤", title: "Гарантии", subtitle: "чеки · договоры · инструкции", status: "всё уходит в Vault", tone: "slate" },
+];
 
+export default function HomeAssetScreen({ estate, onOpenSense, onOpenDocs, onOpenAi }) {
   return (
-    <div className="mx-page estate-room-page">
-      <div className="mx-page-head">
-        <span>ROOM / HOME</span>
-        <h2>Дом</h2>
-        <p>Инженерка, счётчики, техника, фильтры, гарантии и датчики. Пока это контур, дальше сюда зайдёт первый бытовой модуль.</p>
-      </div>
-
-      <section className="estate-room-hero home">
-        <div>
-          <span>Домовой контур</span>
-          <h3>Сделаем дом предсказуемым</h3>
-          <p>Задача комнаты — заранее видеть протечки, расходы, обслуживание техники, гарантийные сроки и бытовые поломки.</p>
+    <div className="mx-page plata-room-page">
+      <section className="plata-room-hero violet">
+        <span>Motrix Home</span>
+        <h1>Дом</h1>
+        <p>Комната для счётчиков, техники, фильтров, протечек, гарантий и умного дома. Здесь рождается бытовой контур AI-дома.</p>
+        <div className="plata-hero-actions">
+          <button onClick={onOpenSense}>Подключить Sense</button>
+          <button onClick={onOpenDocs}>Документы</button>
         </div>
-        <button onClick={onOpenDevices}>Подключить Sense</button>
       </section>
 
-      <div className="estate-section-head">
-        <span>Системы дома</span>
-        <small>Будущие паспорта внутри комнаты</small>
+      <div className="plata-section-head">
+        <div>
+          <span>Контур дома</span>
+          <b>Что будет под контролем</b>
+        </div>
       </div>
 
-      <section className="estate-system-grid">
-        {systems.map((system) => (
-          <button key={system.id} className={`estate-system-card ${system.tone}`}>
-            <span>{system.title}</span>
-            <strong>{system.status}</strong>
-            <small>{system.metric}</small>
+      <section className="plata-feature-grid">
+        {HOME_ZONES.map((item, index) => (
+          <button key={item.id} className={`plata-feature-card ${item.tone}`} style={{ "--delay": `${index * 50}ms` }}>
+            <span>{item.icon}</span>
+            <strong>{item.title}</strong>
+            <small>{item.subtitle}</small>
+            <em>{item.status}</em>
           </button>
         ))}
       </section>
 
-      <div className="estate-section-head">
-        <span>Подключения</span>
-        <small>Что может стать источником сигналов</small>
-      </div>
-
-      <section className="estate-device-list">
-        {groups.map((group) => (
-          <button key={group.id} className="estate-device-card" onClick={onOpenDevices}>
-            <span>{group.productName}</span>
-            <strong>{group.title}</strong>
-            <small>{group.description}</small>
-            <em>{group.userValue}</em>
-          </button>
-        ))}
-      </section>
-
-      <section className="estate-quick-actions">
-        <button onClick={onOpenDocs}>Добавить гарантию</button>
-        <button onClick={onOpenAi}>Что первым подключить?</button>
+      <section className="plata-scenario-card">
+        <span>Сценарий</span>
+        <h3>Дом предупредил раньше аварии</h3>
+        <p>Датчик протечки даёт сигнал, Motrix поднимает срочную карточку, показывает где сработало, какие документы открыть и что делать дальше.</p>
+        <button onClick={onOpenAi}>Смоделировать через AI</button>
       </section>
     </div>
   );

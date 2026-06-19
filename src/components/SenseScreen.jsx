@@ -1,57 +1,57 @@
 import "../motrix-ui.css";
+import { SENSE_CATALOG } from "../core/senseCatalog.js";
 
-function statusText(status) {
-  if (status === "MVP-ready") return "можно пилотировать";
-  if (status === "white-label") return "white-label";
-  if (status === "integration") return "интеграция";
-  if (status === "partner-api") return "API/партнёрство";
-  if (status === "concept") return "концепт";
-  return "позже";
+function tone(item) {
+  return `plata-sense-item ${item.tone || "slate"}`;
 }
 
-export default function SenseScreen({ estate, onOpenGarage, onOpenHome, onOpenPet, onOpenAi }) {
-  const groups = estate?.devices?.groups || [];
-
-  function openZone(zone) {
-    if (zone === "garage") return onOpenGarage?.();
-    if (zone === "home") return onOpenHome?.();
-    if (zone === "pet") return onOpenPet?.();
-  }
-
+export default function SenseScreen({ estate, onOpenGarage, onOpenDocs, onOpenAi }) {
   return (
-    <div className="mx-page estate-room-page">
-      <div className="mx-page-head">
-        <span>MOTRIX SENSE</span>
-        <h2>Устройства</h2>
-        <p>Нервная система AI-дома: внешние датчики и интеграции, которые превращают имущество из статичной карточки в живой источник сигналов.</p>
-      </div>
-
-      <section className="estate-room-hero sense">
-        <div>
-          <span>Device layer</span>
-          <h3>Не гаджеты, а органы чувств</h3>
-          <p>OBD видит машину, счётчики видят расходы, датчики видят аварии, Pet Gate узнаёт питомца, ASU TP открывает B2B-контур.</p>
+    <div className="mx-page plata-sense-page">
+      <section className="plata-room-hero green">
+        <span>Motrix Sense</span>
+        <h1>Устройства</h1>
+        <p>Нервная система AI-дома: авто, дом, питомец и инженерка получают живые сигналы от внешних устройств.</p>
+        <div className="plata-hero-actions">
+          <button onClick={onOpenGarage}>Гараж</button>
+          <button onClick={onOpenDocs}>Vault</button>
         </div>
-        <button onClick={onOpenAi}>Собрать MVP-приоритет</button>
       </section>
 
-      <div className="estate-section-head">
-        <span>Каталог подключений</span>
-        <small>{groups.length} направлений Sense</small>
+      <section className="plata-sense-map">
+        <div><span>1</span><b>Устройство</b><small>OBD, датчик, счётчик, Pet Gate</small></div>
+        <div><span>2</span><b>Сигнал</b><small>ошибка, расход, чип, авария</small></div>
+        <div><span>3</span><b>AI-действие</b><small>объяснение, риск, задача, документ</small></div>
+      </section>
+
+      <div className="plata-section-head">
+        <div>
+          <span>Каталог подключений</span>
+          <b>Что можно продавать и интегрировать</b>
+        </div>
+        <small>{SENSE_CATALOG.length} направлений</small>
       </div>
 
-      <section className="estate-device-list">
-        {groups.map((group) => (
-          <button key={group.id} className={`estate-device-card zone-${group.zone}`} onClick={() => openZone(group.zone)}>
-            <span>{group.productName} · {statusText(group.status)}</span>
-            <strong>{group.title}</strong>
-            <small>{group.description}</small>
-            <div className="estate-signal-chips">
-              {group.signals.map((signal) => <em key={signal}>{signal}</em>)}
+      <section className="plata-sense-list">
+        {SENSE_CATALOG.map((item, index) => (
+          <button key={item.id} className={tone(item)} style={{ "--delay": `${index * 45}ms` }}>
+            <div className="plata-sense-item-head">
+              <span>{item.type}</span>
+              <em>{item.status}</em>
             </div>
-            <p>{group.userValue}</p>
+            <strong>{item.title}</strong>
+            <small>{item.signal}</small>
+            <p>{item.value}</p>
+            <b>{item.cta}</b>
           </button>
         ))}
+      </section>
+
+      <section className="plata-scenario-card green">
+        <span>Принцип</span>
+        <h3>Не гаджет ради гаджета</h3>
+        <p>Каждое устройство должно создавать событие в AI-доме: что произошло, насколько это важно, сколько может стоить и что делать дальше.</p>
+        <button onClick={onOpenAi}>Спросить AI</button>
       </section>
     </div>
   );

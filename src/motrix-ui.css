@@ -442,3 +442,203 @@
 .estate-device-list{display:flex;flex-direction:column;gap:10px;margin:10px 0 16px}.estate-device-card{width:100%;text-align:left;border:1px solid rgba(255,255,255,.09);border-radius:26px;padding:16px;background:linear-gradient(145deg,rgba(255,255,255,.075),rgba(255,255,255,.035));color:#f4f6fb}.estate-device-card span{display:block;color:#93a3bb;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px}.estate-device-card strong{display:block;font-size:20px;letter-spacing:-.4px;margin-bottom:7px}.estate-device-card small{display:block;color:#aeb8c8;font-size:13px;line-height:1.45}.estate-device-card>em{display:block;margin-top:10px;color:#dbe7f7;font-style:normal;font-size:13px;line-height:1.42}.estate-device-card p{color:#d7e0ee;font-size:13px;line-height:1.45;margin-top:10px}.estate-device-card.zone-garage{border-color:rgba(59,130,246,.18)}.estate-device-card.zone-home{border-color:rgba(34,197,94,.18)}.estate-device-card.zone-pet{border-color:rgba(245,158,11,.18)}.estate-device-card.zone-devices{border-color:rgba(103,232,249,.18)}
 .estate-signal-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px}.estate-signal-chips em{font-style:normal;font-size:10px;color:#cad4e4;background:rgba(255,255,255,.075);border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:5px 8px}
 @media (max-width:380px){.estate-room-dot{width:72px;min-height:62px}.estate-room-dot b{font-size:10px}.estate-system-grid{grid-template-columns:1fr}}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Motrix Estate — Plata-inspired motion build
+   Clean fintech hierarchy + living asset cards + restrained motion.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.plata-hub-page,.plata-room-page,.plata-sense-page,.plata-docs-page{
+  padding:0 14px 108px;
+  animation:plata-page-in .36s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes plata-page-in{from{opacity:0;transform:translateY(12px) scale(.992)}to{opacity:1;transform:none}}
+
+.plata-home-hero,.plata-room-hero{
+  position:relative;
+  overflow:hidden;
+  min-height:248px;
+  border-radius:34px;
+  padding:18px;
+  margin:4px 0 12px;
+  color:#111827;
+  background:
+    radial-gradient(circle at 86% 10%,rgba(255,255,255,.95),rgba(255,255,255,0) 28%),
+    linear-gradient(145deg,#fbfbff 0%,#edf2ff 48%,#efe7ff 100%);
+  box-shadow:0 24px 70px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.95);
+  isolation:isolate;
+}
+.plata-home-hero:after,.plata-room-hero:after{
+  content:"";
+  position:absolute;
+  inset:auto -80px -90px auto;
+  width:240px;height:240px;border-radius:50%;
+  background:radial-gradient(circle,rgba(111,76,255,.28),transparent 62%);
+  filter:blur(2px);
+  animation:plata-float 7s ease-in-out infinite;
+  z-index:-1;
+}
+.plata-home-hero.good:after{background:radial-gradient(circle,rgba(34,197,94,.22),transparent 62%)}
+.plata-home-hero.bad:after{background:radial-gradient(circle,rgba(239,68,68,.20),transparent 62%)}
+@keyframes plata-float{0%,100%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(-12px,-16px,0) scale(1.08)}}
+
+.plata-orb{
+  position:absolute;border-radius:50%;pointer-events:none;z-index:-1;
+  filter:blur(.4px);opacity:.85;
+}
+.plata-orb.orb-one{
+  width:88px;height:88px;right:18px;top:48px;
+  background:linear-gradient(135deg,#ff6b35,#7c3aed);
+  animation:plata-orbit 9s ease-in-out infinite;
+}
+.plata-orb.orb-two{
+  width:48px;height:48px;right:112px;bottom:56px;
+  background:linear-gradient(135deg,#22c55e,#60a5fa);
+  animation:plata-orbit 7s ease-in-out infinite reverse;
+}
+@keyframes plata-orbit{0%,100%{transform:translate(0,0) rotate(0deg)}50%{transform:translate(-9px,11px) rotate(16deg)}}
+
+.plata-hero-nav,.plata-hero-actions,.plata-room-top,.plata-room-bottom,.plata-sense-item-head{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+}
+.plata-hero-nav span,.plata-kicker,.plata-room-hero>span,.plata-section-head span,.plata-scenario-card>span,.plata-sense-banner span,.plata-vault-roadmap>span{
+  font-size:11px;font-weight:950;letter-spacing:.9px;text-transform:uppercase;color:#6d28d9;
+}
+.plata-hero-nav button,.plata-hero-actions button,.plata-sense-banner button,.plata-scenario-card button{
+  border:0;border-radius:999px;padding:10px 14px;background:#111827;color:white;font-weight:900;
+  box-shadow:0 10px 28px rgba(17,24,39,.22);
+}
+.plata-hero-copy{position:absolute;left:18px;right:112px;bottom:20px}
+.plata-hero-copy h1,.plata-room-hero h1{font-size:38px;line-height:.95;letter-spacing:-1.7px;margin:8px 0 8px;font-weight:1000;color:#0b1020}
+.plata-hero-copy p,.plata-room-hero p{font-size:14px;line-height:1.45;color:#4b5563;margin:0}
+.plata-score-card{
+  position:absolute;right:16px;bottom:18px;width:96px;height:112px;border:0;border-radius:28px;
+  background:rgba(255,255,255,.72);backdrop-filter:blur(20px);color:#111827;
+  box-shadow:0 18px 44px rgba(87,65,160,.20),inset 0 1px 0 rgba(255,255,255,.95);
+  display:flex;flex-direction:column;align-items:flex-start;justify-content:center;padding:13px;text-align:left;
+  animation:plata-breathe 3.2s ease-in-out infinite;
+}
+@keyframes plata-breathe{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+.plata-score-card span,.plata-score-card small{font-size:10px;color:#64748b;font-weight:850}
+.plata-score-card strong{font-size:30px;letter-spacing:-1.2px;margin:4px 0;color:#111827}
+
+.plata-search-action{
+  display:grid;grid-template-columns:34px 1fr;gap:2px 10px;align-items:center;
+  border-radius:24px;padding:13px 15px;margin:12px 0;
+  background:rgba(255,255,255,.92);color:#111827;border:1px solid rgba(255,255,255,.72);
+  box-shadow:0 14px 38px rgba(0,0,0,.18);
+}
+.plata-search-action span{grid-row:1/3;width:34px;height:34px;border-radius:50%;background:#f1f5f9;display:grid;place-items:center;color:#7c3aed;font-weight:950}
+.plata-search-action b{font-size:15px}.plata-search-action small{font-size:12px;color:#64748b}
+
+.plata-action-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:12px 0 16px}
+.plata-action-tile{
+  min-height:94px;border:0;border-radius:25px;background:rgba(255,255,255,.94);color:#111827;
+  padding:13px 9px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+  box-shadow:0 12px 34px rgba(0,0,0,.16),inset 0 1px 0 rgba(255,255,255,.95);
+}
+.plata-action-tile span{font-size:22px;color:#7c3aed}.plata-action-tile b{font-size:13px}.plata-action-tile small{font-size:10px;color:#64748b;line-height:1.2}
+
+.plata-section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:18px 2px 10px}
+.plata-section-head b{display:block;color:#f8fafc;font-size:20px;letter-spacing:-.6px}.plata-section-head small{color:#8b95a7;font-size:11px}
+
+.plata-room-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.plata-room-card{
+  min-height:178px;border:1px solid rgba(255,255,255,.08);border-radius:30px;padding:15px;text-align:left;color:#f8fafc;
+  background:linear-gradient(145deg,rgba(255,255,255,.09),rgba(255,255,255,.04));
+  box-shadow:0 18px 44px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.06);
+  animation:plata-card-in .42s cubic-bezier(.2,.9,.2,1) both;animation-delay:var(--delay,0ms);
+  position:relative;overflow:hidden;
+}
+@keyframes plata-card-in{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}
+.plata-room-card:before{content:"";position:absolute;inset:-70px -80px auto auto;width:170px;height:170px;border-radius:50%;opacity:.45;filter:blur(2px)}
+.plata-room-card.blue:before{background:radial-gradient(circle,#60a5fa,transparent 62%)}
+.plata-room-card.violet:before{background:radial-gradient(circle,#a78bfa,transparent 62%)}
+.plata-room-card.amber:before{background:radial-gradient(circle,#f59e0b,transparent 62%)}
+.plata-room-card.green:before{background:radial-gradient(circle,#22c55e,transparent 62%)}
+.plata-room-card.slate:before{background:radial-gradient(circle,#94a3b8,transparent 62%)}
+.plata-room-top,.plata-room-card strong,.plata-room-card small,.plata-room-bottom{position:relative;z-index:1}
+.plata-room-icon{width:38px;height:38px;border-radius:16px;background:rgba(255,255,255,.12);display:grid;place-items:center;font-size:20px}
+.plata-room-top em{font-size:10px;color:#aeb8c8;font-style:normal;font-weight:900;text-transform:uppercase;letter-spacing:.55px}
+.plata-room-card strong{display:block;margin:18px 0 6px;font-size:23px;line-height:1;font-weight:1000;letter-spacing:-.8px}
+.plata-room-card small{display:block;min-height:48px;color:#aeb8c8;font-size:12px;line-height:1.35}
+.plata-room-bottom{margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.07)}
+.plata-room-bottom b{font-size:14px}.plata-room-bottom i{font-size:10px;color:#7f8a9d;font-style:normal}
+
+.plata-task-stack{display:flex;flex-direction:column;gap:8px}
+.plata-task-row{
+  width:100%;text-align:left;border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:14px 14px 14px 16px;
+  background:rgba(255,255,255,.072);color:#f8fafc;animation:plata-card-in .38s cubic-bezier(.2,.9,.2,1) both;animation-delay:var(--delay,0ms);
+}
+.plata-task-row span{font-size:10px;color:#a78bfa;font-weight:950;text-transform:uppercase;letter-spacing:.8px}
+.plata-task-row strong{display:block;font-size:16px;margin:5px 0 4px}.plata-task-row small{display:block;font-size:12px;color:#aeb8c8;line-height:1.35}
+.plata-task-row em{display:inline-block;margin-top:10px;font-size:11px;font-style:normal;font-weight:900;color:#0b1020;background:#f8fafc;border-radius:999px;padding:7px 10px}
+.plata-task-row.bad{border-color:rgba(239,68,68,.22);background:rgba(239,68,68,.095)}
+.plata-task-row.warn{border-color:rgba(245,158,11,.20);background:rgba(245,158,11,.09)}
+
+.plata-sense-banner,.plata-scenario-card,.plata-vault-roadmap{
+  margin:14px 0;border-radius:30px;padding:18px;border:1px solid rgba(255,255,255,.09);
+  background:linear-gradient(145deg,rgba(124,58,237,.16),rgba(255,255,255,.055));
+  color:#f8fafc;box-shadow:0 18px 44px rgba(0,0,0,.20);
+}
+.plata-sense-banner{display:flex;justify-content:space-between;gap:14px;align-items:center}
+.plata-sense-banner h3,.plata-scenario-card h3{font-size:24px;line-height:1.02;letter-spacing:-.8px;margin:7px 0}
+.plata-sense-banner p,.plata-scenario-card p{font-size:13px;line-height:1.5;color:#bcc6d6;margin:0}
+
+.plata-quick-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.plata-quick-strip button{border:1px solid rgba(255,255,255,.08);border-radius:18px;background:rgba(255,255,255,.07);color:#f8fafc;padding:12px 8px;font-weight:850;font-size:12px}
+
+.plata-room-hero{min-height:226px;margin-top:2px}
+.plata-room-hero.violet{background:linear-gradient(145deg,#fbfbff,#ede9fe 50%,#dbeafe)}
+.plata-room-hero.amber{background:linear-gradient(145deg,#fff7ed,#ffedd5 52%,#fef3c7)}
+.plata-room-hero.green{background:linear-gradient(145deg,#f0fdf4,#dcfce7 52%,#dbeafe)}
+.plata-room-hero.slate{background:linear-gradient(145deg,#f8fafc,#e2e8f0 52%,#ede9fe)}
+.plata-room-hero .plata-hero-actions{justify-content:flex-start;margin-top:18px}.plata-room-hero .plata-hero-actions button:nth-child(2){background:rgba(17,24,39,.10);color:#111827}
+
+.plata-feature-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.plata-feature-card,.plata-doc-card,.plata-sense-item,.plata-pet-card,.plata-sense-map>div{
+  border:1px solid rgba(255,255,255,.08);border-radius:28px;background:rgba(255,255,255,.075);color:#f8fafc;padding:15px;text-align:left;
+  animation:plata-card-in .38s cubic-bezier(.2,.9,.2,1) both;animation-delay:var(--delay,0ms);
+}
+.plata-feature-card span{font-size:24px;color:#a78bfa}.plata-feature-card strong,.plata-doc-card strong{display:block;margin:9px 0 5px;font-size:18px;line-height:1.05}
+.plata-feature-card small,.plata-doc-card small{display:block;color:#aeb8c8;font-size:12px;line-height:1.38}.plata-feature-card em{display:block;margin-top:11px;color:#dbeafe;font-style:normal;font-size:11px}
+.plata-feature-card.blue{background:rgba(59,130,246,.10)}.plata-feature-card.green{background:rgba(34,197,94,.09)}.plata-feature-card.violet{background:rgba(124,58,237,.11)}.plata-feature-card.amber{background:rgba(245,158,11,.09)}
+
+.plata-pet-card{display:flex;gap:14px;align-items:center;margin:12px 0}.plata-pet-avatar{width:62px;height:62px;border-radius:24px;background:linear-gradient(135deg,#f59e0b,#a78bfa);display:grid;place-items:center;font-size:28px}
+.plata-pet-card span{font-size:11px;color:#fbbf24;text-transform:uppercase;font-weight:950}.plata-pet-card strong{display:block;font-size:18px;margin:4px 0}.plata-pet-card small{color:#aeb8c8}
+
+.plata-sense-map{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.plata-sense-map span{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:#dcfce7;color:#14532d;font-weight:1000;margin-bottom:8px}
+.plata-sense-map b{display:block;font-size:13px}.plata-sense-map small{display:block;color:#aeb8c8;font-size:10px;line-height:1.25;margin-top:4px}
+.plata-sense-list{display:flex;flex-direction:column;gap:9px}
+.plata-sense-item-head span{font-size:10px;color:#a78bfa;font-weight:950;text-transform:uppercase}.plata-sense-item-head em{font-size:10px;color:#94a3b8;font-style:normal}
+.plata-sense-item strong{display:block;font-size:19px;margin:8px 0 5px}.plata-sense-item small{display:block;color:#cbd5e1}.plata-sense-item p{font-size:12px;color:#94a3b8;line-height:1.45}.plata-sense-item b{display:inline-block;margin-top:8px;color:#111827;background:#f8fafc;border-radius:999px;padding:7px 10px;font-size:11px}
+
+.plata-upload-card{
+  display:block;border:0;border-radius:30px;padding:19px;margin:12px 0;
+  background:linear-gradient(145deg,#ffffff,#eef2ff);color:#111827;box-shadow:0 18px 44px rgba(0,0,0,.18);
+}
+.plata-upload-card span{font-size:11px;color:#7c3aed;text-transform:uppercase;font-weight:950}.plata-upload-card strong{display:block;font-size:22px;margin:7px 0}.plata-upload-card small{display:block;color:#64748b;line-height:1.4}
+.plata-upload-card.loading{opacity:.72;animation:plata-pulse-soft 1.25s ease-in-out infinite}
+@keyframes plata-pulse-soft{0%,100%{filter:brightness(1)}50%{filter:brightness(1.08)}}
+.plata-doc-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.plata-doc-card span{font-size:11px;color:#a78bfa;text-transform:uppercase;font-weight:950}.plata-doc-card.good{background:rgba(34,197,94,.09)}.plata-doc-card.warn{background:rgba(245,158,11,.09)}
+.plata-vault-roadmap div{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}.plata-vault-roadmap b{font-size:11px;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.07);border-radius:999px;padding:8px 10px}
+
+.mx-bottom-nav{backdrop-filter:blur(22px);box-shadow:0 -18px 44px rgba(0,0,0,.24)}
+.mx-nav-btn.active .mx-nav-icon-wrap{animation:plata-nav-pop .26s cubic-bezier(.2,.9,.2,1)}
+@keyframes plata-nav-pop{0%{transform:scale(.92)}70%{transform:scale(1.08)}100%{transform:scale(1)}}
+
+@media (max-width:380px){
+  .plata-room-grid,.plata-feature-grid,.plata-doc-grid{grid-template-columns:1fr}
+  .plata-hero-copy{right:18px;bottom:134px}
+  .plata-score-card{left:18px;right:auto;bottom:18px;width:calc(100% - 36px);height:92px}
+  .plata-action-grid,.plata-sense-map{grid-template-columns:1fr}
+}
+
+@media (prefers-reduced-motion: reduce){
+  .plata-hub-page,.plata-room-page,.plata-sense-page,.plata-docs-page,
+  .plata-room-card,.plata-task-row,.plata-feature-card,.plata-doc-card,.plata-sense-item,
+  .plata-home-hero:after,.plata-orb,.plata-score-card,.mx-nav-btn.active .mx-nav-icon-wrap{
+    animation:none!important;
+  }
+}

@@ -695,6 +695,10 @@ export default function App() {
           onOpenDevices={() => setTab("devices")}
           onOpenProfile={() => setProfileOnboardingOpen(true)}
           onManualAdd={() => openManualForm()}
+          onOpenZone={(zoneId) => {
+            const nextTab = { garage: "garage", docs: "docs", home: "house", pet: "pet", devices: "sense" }[zoneId] || "home";
+            setTab(nextTab);
+          }}
         />
       )}
       {tab === "garage" && (
@@ -757,6 +761,30 @@ export default function App() {
           onOpenGarage={() => setTab("garage")}
           onOpenHome={() => setTab("room-home")}
           onOpenPet={() => setTab("pet")}
+          onOpenAi={() => setTab("ai")}
+        />
+      )}
+      {tab === "house" && (
+        <HomeAssetScreen
+          estate={estate}
+          onOpenSense={() => setTab("sense")}
+          onOpenDocs={() => setTab("docs")}
+          onOpenAi={() => setTab("ai")}
+        />
+      )}
+      {tab === "pet" && (
+        <PetAssetScreen
+          estate={estate}
+          onOpenSense={() => setTab("sense")}
+          onOpenDocs={() => setTab("docs")}
+          onOpenAi={() => setTab("ai")}
+        />
+      )}
+      {tab === "sense" && (
+        <SenseScreen
+          estate={estate}
+          onOpenGarage={() => setTab("garage")}
+          onOpenDocs={() => setTab("docs")}
           onOpenAi={() => setTab("ai")}
         />
       )}
