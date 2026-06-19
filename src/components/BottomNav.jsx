@@ -1,6 +1,7 @@
 const items = [
   ["home", "⌂", "Дом"],
   ["garage", "▣", "Гараж"],
+  ["passport", "◈", "Паспорт"],
   ["docs", "▤", "Vault"],
   ["ai", "✦", "AI"],
   ["more", "☰", "Ещё"],
@@ -8,10 +9,10 @@ const items = [
 
 export default function BottomNav({ tab, setTab, reminderCount = 0 }) {
   return (
-    <nav className="mx-bottom-nav bottom-nav">
+    <nav className="mx-bottom-nav bottom-nav mx-bottom-nav-six">
       {items.map(([id, icon, label]) => (
         <button key={id} className={`mx-nav-btn${tab === id ? " active" : ""}`} onClick={() => setTab(id)}>
-          <span className="mx-nav-icon-wrap"><span className="mx-nav-icon">{icon}</span>{id === "home" && reminderCount > 0 && <span className="nav-badge">{reminderCount > 3 ? "3+" : reminderCount}</span>}</span>
+          <span className="mx-nav-icon-wrap"><span className="mx-nav-icon">{icon}</span>{(id === "home" || id === "garage") && reminderCount > 0 && <span className="nav-badge">{reminderCount > 3 ? "3+" : reminderCount}</span>}</span>
           <span>{label}</span>
         </button>
       ))}

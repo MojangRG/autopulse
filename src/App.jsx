@@ -7,6 +7,8 @@ import AiScreen from "./components/AiScreen";
 import MoreScreen from "./components/MoreScreen";
 import OnboardingProfile from "./components/OnboardingProfile";
 import WelcomeScreen from "./components/WelcomeScreen";
+import AuthScreen from "./components/AuthScreen.jsx";
+import AssetSetupScreen from "./components/AssetSetupScreen.jsx";
 import HouseHubScreen from "./components/HouseHubScreen.jsx";
 import DocumentsScreen from "./components/DocumentsScreen.jsx";
 import HomeAssetScreen from "./components/HomeAssetScreen.jsx";
@@ -70,6 +72,8 @@ const defaultData = emptyVehicleData(0);
 
 const CHAT_KEY = "autopulse-chat";
 const RENDER_KEY = "autopulse-vehicle-render";
+const USER_KEY = "motrix-user";
+const SETUP_SKIP_KEY = "motrix-setup-skipped";
 
 function emptyRenderState() {
   return { status: "idle", imageUrl: "", prompt: "", generatedAt: "", error: "", vehicleFingerprint: "" };
@@ -124,6 +128,9 @@ function compressImage(file, maxWidth = 1400, quality = 0.72) {
 
 export default function App() {
   const [tab, setTab] = useState("home");
+  const [user, setUser] = useState(() => { try { return JSON.parse(localStorage.getItem(USER_KEY) || "null"); } catch { return null; } });
+  const [assetSetupMode, setAssetSetupMode] = useState("choice");
+  const [assetSetupSkipped, setAssetSetupSkipped] = useState(() => localStorage.getItem(SETUP_SKIP_KEY) === "1" || Boolean(localStorage.getItem("autopulse-vehicle")));
   const [vehicle, setVehicle]       = useState(() => JSON.parse(localStorage.getItem("autopulse-vehicle") || "null") || null);
   const [profile, setProfile]       = useState(() => JSON.parse(localStorage.getItem("autopulse-profile") || "null"));
   const [analysis, setAnalysis]     = useState(() => JSON.parse(localStorage.getItem("autopulse-analysis") || "null"));
@@ -300,7 +307,7 @@ export default function App() {
       localStorage.removeItem("autopulse-reminders");
       setReminders([]);
       generateVehicleRender(mergedVehicle);
-      setProfileOnboardingOpen(true);
+      finishVehicleSetup();
     } catch (error) { alert("Ошибка связи с сервером: " + error.message); }
     finally { setIsDetecting(false); }
   }
@@ -469,7 +476,7 @@ export default function App() {
     localStorage.removeItem("autopulse-reminders");
     setReminders([]);
     generateVehicleRender(v);
-    setProfileOnboardingOpen(true);
+    finishVehicleSetup();
   }
 
   function fillDemoVehicle() { setVehicleForm(sanitizeVehicleForm({ vin: "JF1SK7AC2MG117103", brand: "Subaru", model: "Forester", generation: "SK", year: "2020", engine: "FB20", transmission: "CVT", drive: "AWD", color: "темно-синий металлик", mileage: 86000 })); }
@@ -560,6 +567,7 @@ export default function App() {
     setData(defaultData); setNewMileage(defaultData.mileage); setChat([]); setReminders([]);
     clearVehicleRender();
     setVehicleForm({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", color: "", mileage: "" });
+    setAssetSetupMode("choice"); setAssetSetupSkipped(false); localStorage.removeItem(SETUP_SKIP_KEY);
     setTab("home");
   }
 
@@ -570,6 +578,7 @@ export default function App() {
     setData(defaultData); setNewMileage(defaultData.mileage); setReminders([]);
     clearVehicleRender();
     setVehicleForm({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", color: "", mileage: "" });
+    setAssetSetupMode("vehicle"); setAssetSetupSkipped(false); localStorage.removeItem(SETUP_SKIP_KEY);
     setTab("home");
   }
 
@@ -578,20 +587,67 @@ export default function App() {
     localStorage.removeItem(CHAT_KEY);
   }
 
-  // ── Onboarding (no vehicle yet) ───────────────────────────────────────────
-  if (!vehicle) {
+  function saveUserProfile(nextUser) {
+    setUser(nextUser);
+    localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+    setAssetSetupMode("choice");
+    setAssetSetupSkipped(false);
+    localStorage.removeItem(SETUP_SKIP_KEY);
+    setTab("home");
+  }
+
+  function skipAssetSetup() {
+    setAssetSetupSkipped(true);
+    localStorage.setItem(SETUP_SKIP_KEY, "1");
+    setAssetSetupMode("choice");
+    setTab("home");
+  }
+
+  function openAssetSetup(mode = "choice") {
+    setAssetSetupMode(mode);
+    setAssetSetupSkipped(false);
+    localStorage.removeItem(SETUP_SKIP_KEY);
+    setTab("home");
+  }
+
+  function finishVehicleSetup() {
+    setAssetSetupMode("choice");
+    setAssetSetupSkipped(false);
+    localStorage.removeItem(SETUP_SKIP_KEY);
+    setTab("home");
+    setProfileOnboardingOpen(false);
+  }
+
+  function createHomePrototype() {
+    localStorage.setItem("motrix-home-asset", JSON.stringify({ id: "home-main", title: "Мой дом", createdAt: new Date().toISOString(), status: "prototype" }));
+    skipAssetSetup();
+    setTab("room-home");
+  }
+
+  function createPetPrototype() {
+    localStorage.setItem("motrix-pet-asset", JSON.stringify({ id: "pet-main", title: "Питомец", createdAt: new Date().toISOString(), status: "prototype" }));
+    skipAssetSetup();
+    setTab("pet");
+  }
+
+  // ── Auth and asset onboarding ─────────────────────────────────────────────
+  if (!user) {
+    return (<div className="app mx-app-shell"><AuthScreen onAuth={saveUserProfile} /></div>);
+  }
+
+  if (!vehicle && !assetSetupSkipped && assetSetupMode !== "vehicle") {
     return (
       <div className="app mx-app-shell">
-        <WelcomeScreen
-          vehicleForm={vehicleForm}
-          updateVehicleField={updateVehicleField}
-          parseStsPhoto={parseStsPhoto}
-          detectVehicleByVin={detectVehicleByVin}
-          saveVehicleManually={saveVehicleManually}
-          fillDemoVehicle={fillDemoVehicle}
-          isParsingSts={isParsingSts}
-          isDetecting={isDetecting}
-        />
+        <AssetSetupScreen user={user} hasVehicle={Boolean(vehicle)} onAddVehicle={() => setAssetSetupMode("vehicle")} onAddHome={createHomePrototype} onAddPet={createPetPrototype} onSkip={skipAssetSetup} />
+      </div>
+    );
+  }
+
+  if (!vehicle && assetSetupMode === "vehicle") {
+    return (
+      <div className="app mx-app-shell">
+        <div className="mx-setup-topbar"><button onClick={() => setAssetSetupMode("choice")}>← Выбор объекта</button><span>Гараж</span></div>
+        <WelcomeScreen vehicleForm={vehicleForm} updateVehicleField={updateVehicleField} parseStsPhoto={parseStsPhoto} detectVehicleByVin={detectVehicleByVin} saveVehicleManually={saveVehicleManually} fillDemoVehicle={fillDemoVehicle} isParsingSts={isParsingSts} isDetecting={isDetecting} />
       </div>
     );
   }
@@ -599,9 +655,11 @@ export default function App() {
   // ── Main app ──────────────────────────────────────────────────────────────
   return (
     <div className="app">
-      <div className="topbar">
-        <span className="topbar-brand">Motrix</span>
+      <div className="topbar mx-plata-topbar">
+        <button className="mx-topbar-home" onClick={() => setTab("home")}>⌂</button>
+        <span className="topbar-brand">Motrix House</span>
         {isAnalyzing && <span className="topbar-analyzing">Анализирую...</span>}
+        <button className="mx-topbar-add" onClick={() => openAssetSetup("choice")}>＋</button>
       </div>
 
       {/* Owner profile onboarding */}
@@ -610,6 +668,21 @@ export default function App() {
           onSave={saveOwnerProfile}
           onSkip={() => { setProfileOnboardingOpen(false); setTab("home"); setTimeout(() => analyzeVehicle(data, profile, vehicle), 300); }}
         />
+      )}
+
+      {assetSetupMode === "choice" && !assetSetupSkipped && (
+        <div className="mx-setup-overlay">
+          <AssetSetupScreen compact user={user} hasVehicle={Boolean(vehicle)} onAddVehicle={() => setAssetSetupMode("vehicle")} onAddHome={createHomePrototype} onAddPet={createPetPrototype} onSkip={skipAssetSetup} />
+        </div>
+      )}
+
+      {assetSetupMode === "vehicle" && vehicle && (
+        <div className="mx-vehicle-setup-overlay">
+          <div className="mx-vehicle-setup-shell">
+            <div className="mx-setup-topbar"><button onClick={() => setAssetSetupMode("choice")}>← Назад</button><span>Добавить авто</span></div>
+            <WelcomeScreen vehicleForm={vehicleForm} updateVehicleField={updateVehicleField} parseStsPhoto={parseStsPhoto} detectVehicleByVin={detectVehicleByVin} saveVehicleManually={saveVehicleManually} fillDemoVehicle={fillDemoVehicle} isParsingSts={isParsingSts} isDetecting={isDetecting} />
+          </div>
+        </div>
       )}
 
       {/* Pending docs confirmation */}
@@ -681,27 +754,35 @@ export default function App() {
       )}
 
       {/* Screens */}
+      {["garage", "passport", "journal"].includes(tab) && !vehicle && (
+        <div className="mx-empty-vehicle-room">
+          <AssetSetupScreen compact user={user} hasVehicle={false} onAddVehicle={() => openAssetSetup("vehicle")} onAddHome={createHomePrototype} onAddPet={createPetPrototype} onSkip={() => setTab("home")} />
+        </div>
+      )}
       {tab === "home" && (
         <HouseHubScreen
           estate={estate}
+          user={user}
           vehicle={vehicle}
           vehicleBrain={orch}
           reminders={reminders}
           onOpenGarage={() => setTab("garage")}
+          onOpenPassport={() => setTab("passport")}
           onOpenDocs={() => setTab("docs")}
           onOpenAi={() => setTab("ai")}
+          onOpenAssetSetup={() => openAssetSetup("choice")}
           onOpenHome={() => setTab("room-home")}
           onOpenPet={() => setTab("pet")}
           onOpenDevices={() => setTab("devices")}
           onOpenProfile={() => setProfileOnboardingOpen(true)}
           onManualAdd={() => openManualForm()}
           onOpenZone={(zoneId) => {
-            const nextTab = { garage: "garage", docs: "docs", home: "house", pet: "pet", devices: "sense" }[zoneId] || "home";
+            const nextTab = { garage: "garage", docs: "docs", home: "room-home", pet: "pet", devices: "devices" }[zoneId] || "home";
             setTab(nextTab);
           }}
         />
       )}
-      {tab === "garage" && (
+      {tab === "garage" && vehicle && (
         <HomeScreen
           vehicle={vehicle}
           mileage={data.mileage}
@@ -764,31 +845,7 @@ export default function App() {
           onOpenAi={() => setTab("ai")}
         />
       )}
-      {tab === "house" && (
-        <HomeAssetScreen
-          estate={estate}
-          onOpenSense={() => setTab("sense")}
-          onOpenDocs={() => setTab("docs")}
-          onOpenAi={() => setTab("ai")}
-        />
-      )}
-      {tab === "pet" && (
-        <PetAssetScreen
-          estate={estate}
-          onOpenSense={() => setTab("sense")}
-          onOpenDocs={() => setTab("docs")}
-          onOpenAi={() => setTab("ai")}
-        />
-      )}
-      {tab === "sense" && (
-        <SenseScreen
-          estate={estate}
-          onOpenGarage={() => setTab("garage")}
-          onOpenDocs={() => setTab("docs")}
-          onOpenAi={() => setTab("ai")}
-        />
-      )}
-      {tab === "journal" && (
+      {tab === "journal" && vehicle && (
         <JournalScreen
           logs={data.logs}
           isParsingDoc={isParsingDoc}
@@ -798,7 +855,7 @@ export default function App() {
           onDelete={deleteLog}
         />
       )}
-      {tab === "passport" && (
+      {tab === "passport" && vehicle && (
         <PassportScreen
           vehicle={vehicle}
           schedule={orch.schedule}
