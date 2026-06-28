@@ -1,16 +1,35 @@
-# React + Vite
+# Motrix
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Motrix is a Russian-language automotive assistant focused on one job: reviewing a service estimate before the owner approves and pays for the work.
 
-Currently, two official plugins are available:
+## Product surface
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- evidence-based vehicle summary without a fabricated health score;
+- image review of service estimates and work orders;
+- completed and planned service history;
+- AI mechanic with vehicle and history context;
+- local export, import and deletion;
+- product pricing with provider-independent checkout links;
+- isolated VIN provider adapter with manual-entry fallback.
 
-## React Compiler
+The previous estate core, home, pet and device screens remain in the repository but are not imported into the launch UI.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Run
 
-## Expanding the ESLint configuration
+```bash
+npm install
+npm run dev
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Copy `.env.example` to the deployment environment. `OPENAI_API_KEY` is required for document review and the AI mechanic. VIN lookup and paid checkout fail closed until their respective environment variables are configured.
+
+## Build
+
+```bash
+npm run lint
+npm run build
+```
+
+## Important limitation
+
+The launch version stores the vehicle profile and history in the browser. This is suitable for a public beta, not for a paid cross-device account. Payment links can be exposed now, but production entitlements require a payment-provider webhook and a server-side user database after the acquiring provider is selected.
