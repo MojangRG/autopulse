@@ -1,38 +1,16 @@
-# Motrix
+# React + Vite
 
-Motrix is a Russian-language digital twin of a car and a contextual AI mechanic. It remembers the vehicle, its service history and documents, then tells the owner what deserves attention next.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-## Product surface
+Currently, two official plugins are available:
 
-- a personal garage built around the user's actual vehicle and photo;
-- evidence-based next action without a fabricated health score;
-- short ownership baseline that treats unknown history honestly;
-- image review of service estimates and work orders;
-- completed and planned service history;
-- AI mechanic with vehicle and history context;
-- local export, import and deletion;
-- document review as a tool inside the vehicle rather than the whole product;
-- annual Pro and one-off review pricing with provider-independent checkout links;
-- isolated VIN provider adapter with manual-entry fallback.
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-The previous estate core, home, pet and device screens remain in the repository but are not imported into the launch UI.
+## React Compiler
 
-## Run
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-```bash
-npm install
-npm run dev
-```
+## Expanding the ESLint configuration
 
-Copy `.env.example` to the deployment environment. `OPENAI_API_KEY` is required for document review and the AI mechanic. VIN lookup and paid checkout fail closed until their respective environment variables are configured.
-
-## Build
-
-```bash
-npm run lint
-npm run build
-```
-
-## Important limitation
-
-The launch version stores the vehicle profile and history in the browser. This is suitable for a public beta, not for a paid cross-device account. Payment links can be exposed now, but production entitlements require a payment-provider webhook and a server-side user database after the acquiring provider is selected.
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.

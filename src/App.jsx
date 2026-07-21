@@ -1,233 +1,765 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  AlertTriangle, Bot, Camera, Car, Check, ChevronRight, CircleHelp,
-  Download, FileSearch, Gauge, History, Home, Plus, ReceiptText,
-  Settings, ShieldCheck, Sparkles, Trash2, Upload, X,
-} from "./components/Icons.jsx";
-import { startCheckout } from "./services/billing.js";
-import { clearState, exportState, importState, loadState, saveState } from "./services/storage.js";
-import { lookupVin, VinProviderUnavailableError } from "./services/vinProvider.js";
+import { useEffect, useMemo, useState } from "react";
+import BottomNav from "./components/BottomNav";
+import HomeScreen from "./components/HomeScreen";
+import JournalScreen from "./components/JournalScreen";
+import PassportScreen from "./components/PassportScreen";
+import AiScreen from "./components/AiScreen";
+import MoreScreen from "./components/MoreScreen";
+import OnboardingProfile from "./components/OnboardingProfile";
+import WelcomeScreen from "./components/WelcomeScreen";
+import { sanitizeVehicleForm, validateVehicleForm } from "./vehicleCatalog.js";
+import { computeOrchestratorState } from "./utils/orchestrator.js";
+import { generateReminders, dismissReminder, doneReminder, getActiveReminders } from "./utils/reminders.js";
 import "./App.css";
 
-const EMPTY_STATE = {
-  version: 2,
-  vehicle: null,
-  baseline: null,
-  events: [],
-  reviews: [],
-  chat: [],
-  plan: "free",
-  consentAt: null,
-  createdAt: new Date().toISOString(),
-};
-
-const NAV = [
-  ["garage", Home, "Гараж"],
-  ["history", History, "История"],
-  ["mechanic", Bot, "Механик"],
-  ["passport", Car, "Паспорт"],
+const WORK_OPTIONS = [
+  { id: "engine_service", label: "ТО двигателя" },
+  { id: "engine_oil",     label: "Замена масла двигателя" },
+  { id: "oil_filter",     label: "Замена масляного фильтра" },
+  { id: "cabin_filter",   label: "Замена салонного фильтра" },
+  { id: "air_filter",     label: "Замена воздушного фильтра" },
+  { id: "spark_plugs",    label: "Замена свечей зажигания" },
+  { id: "cvt_fluid",      label: "Замена масла CVT" },
+  { id: "diff_fluid",     label: "Замена масла редукторов" },
+  { id: "brake_fluid",    label: "Замена тормозной жидкости" },
+  { id: "front_pads",     label: "Замена передних колодок" },
+  { id: "front_discs",    label: "Замена передних тормозных дисков" },
+  { id: "rear_pads",      label: "Замена задних колодок" },
+  { id: "rear_discs",     label: "Замена задних тормозных дисков" },
+  { id: "fuel_cleaning",  label: "Чистка топливной системы" },
+  { id: "suspension_check", label: "Диагностика подвески" },
+  { id: "other",          label: "Другое" },
 ];
 
-const VERDICT = {
-  necessary: { label: "Обосновано", tone: "good" },
-  question: { label: "Уточнить", tone: "warn" },
-  insufficient: { label: "Не доказано", tone: "bad" },
-};
+const DEFAULT_RULES = [
+  { id: "engine_oil",   name: "Масло двигателя",   intervalKm: 10000, warningBeforeKm: 2000,  severity: "high",   notes: "По вашей истории меняется каждые 10 000 км." },
+  { id: "oil_filter",   name: "Масляный фильтр",    intervalKm: 10000, warningBeforeKm: 2000,  severity: "high",   notes: "Обычно меняется вместе с маслом двигателя." },
+  { id: "cabin_filter", name: "Салонный фильтр",    intervalKm: 10000, warningBeforeKm: 2000,  severity: "medium", notes: "Для комфорта и вентиляции." },
+  { id: "air_filter",   name: "Воздушный фильтр",   intervalKm: 15000, warningBeforeKm: 3000,  severity: "medium", notes: "В пыльных условиях менять чаще." },
+  { id: "spark_plugs",  name: "Свечи зажигания",    intervalKm: 100000,warningBeforeKm: 10000, severity: "medium", notes: "Контроль к 95-100 тыс. км." },
+  { id: "cvt_fluid",    name: "Масло CVT",          intervalKm: 60000, warningBeforeKm: 10000, severity: "high",   notes: "Критичный узел для ресурса вариатора." },
+  { id: "diff_fluid",   name: "Масло редукторов",   intervalKm: 60000, warningBeforeKm: 10000, severity: "medium", notes: "Передний и задний редукторы." },
+  { id: "brake_fluid",  name: "Тормозная жидкость", intervalKm: 40000, warningBeforeKm: 5000,  severity: "high",   intervalMonths: 24, notes: "Также контролировать по сроку 2 года." },
+];
 
-function initialState() {
-  const saved = loadState();
-  if (saved?.vehicle) return { ...EMPTY_STATE, ...saved, version: 2, baseline: saved.baseline || null };
-  try {
-    const vehicle = JSON.parse(localStorage.getItem("autopulse-vehicle") || "null");
-    const data = JSON.parse(localStorage.getItem("autopulse-data") || "null");
-    if (vehicle) return {
-      ...EMPTY_STATE,
-      vehicle: { ...vehicle, mileage: Number(data?.mileage || vehicle.mileage || 0) },
-      events: (data?.logs || []).map((item) => ({ ...item, status: "completed", source: item.source || "legacy" })),
-    };
-  } catch { /* Ignore a damaged legacy snapshot. */ }
-  return EMPTY_STATE;
+function emptyVehicleData(mileage = 0) {
+  return { mileage: Number(mileage || 0), logs: [] };
 }
 
-function money(value) { const number = Number(value || 0); return number ? `${number.toLocaleString("ru-RU")} ₽` : "—"; }
-function km(value) { return `${Number(value || 0).toLocaleString("ru-RU")} км`; }
-function carName(vehicle) { return [vehicle?.brand, vehicle?.model].filter(Boolean).join(" ") || "Автомобиль"; }
-function formatDate(value) { return value ? new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", year: "numeric" }).format(new Date(value)) : "Дата не указана"; }
+function genericProfileFor(vehicle) {
+  return {
+    vehicle,
+    serviceItems: DEFAULT_RULES,
+    commonIssues: [],
+    recommendations: [
+      "Добавьте историю обслуживания, чтобы Motrix точнее считал регламент.",
+      "Проверьте ключевые жидкости и фильтры после создания профиля.",
+      "Загрузите чек или заказ-наряд после ближайшего обслуживания.",
+    ],
+    disclaimer: "Базовый профиль создан по универсальному регламенту. Точные интервалы нужно подтвердить по VIN, мануалу или документам СТО.",
+  };
+}
 
-function readImage(file, maxWidth = 1400, quality = 0.78) {
+const defaultData = emptyVehicleData(0);
+
+const CHAT_KEY = "autopulse-chat";
+const RENDER_KEY = "autopulse-vehicle-render";
+
+function emptyRenderState() {
+  return { status: "idle", imageUrl: "", prompt: "", generatedAt: "", error: "", vehicleFingerprint: "" };
+}
+
+function getVehicleRenderFingerprint(vehicle) {
+  return [vehicle?.brand, vehicle?.model, vehicle?.generation, vehicle?.year, vehicle?.color]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .join("|");
+}
+
+function todayIso() { return new Date().toISOString().slice(0, 10); }
+
+function logFingerprint(log) {
+  return [
+    String(log.normalizedId || "").trim().toLowerCase(),
+    String(log.title || "").trim().toLowerCase(),
+    String(log.mileage || ""),
+    String(log.datePerformed || ""),
+  ].join("|");
+}
+
+function isDuplicateLog(log, existingLogs = [], ignoreId = null) {
+  const fp = logFingerprint(log);
+  return existingLogs.some((item) => item.id !== ignoreId && logFingerprint(item) === fp);
+}
+
+function compressImage(file, maxWidth = 1400, quality = 0.72) {
   return new Promise((resolve, reject) => {
+    if (!file.type.startsWith("image/")) return resolve(file);
+    const img = new Image();
     const reader = new FileReader();
     reader.onload = () => {
-      const image = new Image();
-      image.onload = () => {
-        const scale = Math.min(1, maxWidth / image.width);
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width);
         const canvas = document.createElement("canvas");
-        canvas.width = Math.round(image.width * scale);
-        canvas.height = Math.round(image.height * scale);
-        canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", quality));
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          if (!blob) reject(new Error("Не удалось сжать изображение"));
+          else resolve(new File([blob], "compressed.jpg", { type: "image/jpeg" }));
+        }, "image/jpeg", quality);
       };
-      image.onerror = reject;
-      image.src = reader.result;
+      img.onerror = () => reject(new Error("Не удалось прочитать изображение"));
+      img.src = reader.result;
     };
-    reader.onerror = reject;
+    reader.onerror = () => reject(new Error("Не удалось открыть файл"));
     reader.readAsDataURL(file);
   });
 }
 
-function coverage(state) {
-  const checks = [
-    state.vehicle?.brand, state.vehicle?.model, state.vehicle?.year, state.vehicle?.mileage,
-    state.baseline?.history, state.baseline?.lastOil, state.baseline?.transmission,
-    state.baseline?.brakeFluid, state.baseline?.monthlyKm,
-  ];
-  return Math.round(checks.filter((value) => value && value !== "unknown").length / checks.length * 100);
-}
-
-function deriveGarage(state) {
-  const planned = state.events.filter((item) => item.status === "planned");
-  const completed = state.events.filter((item) => item.status === "completed");
-  const latestReview = state.reviews[0];
-  const disputed = latestReview?.items?.filter((item) => item.verdict === "insufficient").length || 0;
-  const forecast = planned.reduce((sum, item) => sum + Number(item.cost || 0), 0);
-  const known = coverage(state);
-
-  if (!state.baseline) return { tone: "unknown", label: "Нужна исходная точка", title: "Расскажите, что известно о машине", body: "Пять коротких ответов помогут Motrix отличать подтверждённую историю от предположений.", action: "Заполнить историю", known, planned, forecast };
-  if (state.baseline.lastOil === "gt10") return { tone: "urgent", label: "Требует внимания", title: "Проверьте обслуживание двигателя", body: "По вашим словам после последней замены масла прошло больше 10 000 км. Подтвердите пробег по чеку или запланируйте обслуживание.", action: "Добавить в план", known, planned, forecast };
-  if (disputed) return { tone: "warn", label: "Последний документ", title: `${disputed} ${disputed === 1 ? "позиция не подтверждена" : "позиции не подтверждены"}`, body: latestReview.summary, action: "Открыть разбор", known, planned, forecast };
-  if (planned.length) return { tone: "watch", label: "Следующий шаг", title: planned[0].title, body: planned[0].reason || "Работа сохранена в вашем плане обслуживания.", action: "Открыть план", known, planned, forecast };
-  if (state.baseline.history === "unknown" || state.baseline.lastOil === "unknown") return { tone: "unknown", label: "Пробел в истории", title: "Восстановите последнее обслуживание", body: "Motrix не знает, когда менялись масло и ключевые жидкости. Добавьте документ или событие, чтобы не строить рекомендации вслепую.", action: "Добавить документ", known, planned, forecast };
-  if (!completed.length && !state.reviews.length) return { tone: "calm", label: "Профиль создан", title: "Добавьте первый факт об автомобиле", body: "Чек, заказ-наряд или выполненная работа превратят пустой профиль в личную историю машины.", action: "Добавить событие", known, planned, forecast };
-  return { tone: "good", label: "По известным данным", title: "Срочных действий не видно", body: "Motrix не нашёл оснований для тревоги в сохранённой истории. Продолжайте добавлять обслуживание и обновлять пробег.", action: "Добавить событие", known, planned, forecast };
-}
-
-function Modal({ title, children, onClose, wide = false }) {
-  return <div className="overlay" onMouseDown={onClose}><section className={`modal${wide ? " wide" : ""}`} role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><header><h2>{title}</h2><button className="icon-button" onClick={onClose} aria-label="Закрыть"><X size={20} /></button></header>{children}</section></div>;
-}
-
-function Setup({ onComplete }) {
-  const [step, setStep] = useState(1);
-  const [form, setForm] = useState({ vin: "", brand: "", model: "", year: "", mileage: "", engine: "", transmission: "", photo: "" });
-  const [baseline, setBaseline] = useState({ history: "", lastOil: "", transmission: "", brakeFluid: "", monthlyKm: "" });
-  const [vinState, setVinState] = useState({ loading: false, message: "" });
-  const photoRef = useRef(null);
-  const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
-
-  async function usePhoto(file) { if (!file) return; const photo = await readImage(file); setForm((current) => ({ ...current, photo })); }
-  async function detectVin() {
-    const vin = form.vin.trim().toUpperCase();
-    if (vin.length !== 17) return setVinState({ loading: false, message: "VIN должен содержать 17 символов." });
-    setVinState({ loading: true, message: "" });
-    try { const vehicle = await lookupVin(vin); setForm((current) => ({ ...current, ...vehicle, vin })); setVinState({ loading: false, message: "Проверьте найденные данные." }); }
-    catch (error) { setVinState({ loading: false, message: error instanceof VinProviderUnavailableError ? error.message : error.message }); }
-  }
-  function finish() {
-    if (Object.values(baseline).some((value) => !value)) return;
-    onComplete({ ...form, vin: form.vin.trim().toUpperCase(), year: Number(form.year), mileage: Number(form.mileage) }, baseline);
-  }
-
-  return <main className="setup-page">
-    <div className="brand-lockup"><div className="brand-mark">M</div><b>Motrix</b><span>Личный гараж</span></div>
-    {step === 1 ? <>
-      <section className="setup-copy"><span className="kicker">Ваша машина в центре</span><h1>Создайте цифрового двойника автомобиля</h1><p>Motrix будет помнить обслуживание, документы и контекст, чтобы каждый следующий совет относился именно к вашей машине.</p></section>
-      <section className="setup-card">
-        <button className={`photo-picker${form.photo ? " has-photo" : ""}`} onClick={() => photoRef.current?.click()} style={form.photo ? { backgroundImage: `url(${form.photo})` } : undefined}>{!form.photo && <><Camera size={30} /><b>Добавить фото автомобиля</b><span>Можно сделать позже</span></>}</button>
-        <input ref={photoRef} type="file" accept="image/*" hidden onChange={(event) => usePhoto(event.target.files?.[0])} />
-        <div className="vin-row"><label><span>VIN, необязательно</span><input value={form.vin} onChange={update("vin")} maxLength={17} placeholder="17 символов" /></label><button className="secondary-button" onClick={detectVin} disabled={vinState.loading}>{vinState.loading ? "Ищу" : "Найти"}</button></div>
-        {vinState.message && <p className="form-message">{vinState.message}</p>}
-        <div className="form-grid"><label><span>Марка</span><input value={form.brand} onChange={update("brand")} placeholder="Subaru" /></label><label><span>Модель</span><input value={form.model} onChange={update("model")} placeholder="Forester" /></label><label><span>Год</span><input type="number" value={form.year} onChange={update("year")} placeholder="2020" /></label><label><span>Пробег</span><input type="number" value={form.mileage} onChange={update("mileage")} placeholder="88000" /></label><label><span>Двигатель</span><input value={form.engine} onChange={update("engine")} placeholder="FB20" /></label><label><span>Коробка</span><input value={form.transmission} onChange={update("transmission")} placeholder="CVT" /></label></div>
-        <button className="primary-button" disabled={!form.brand || !form.model || !form.year || !form.mileage} onClick={() => setStep(2)}>Продолжить <ChevronRight size={18} /></button>
-      </section>
-    </> : <>
-      <section className="setup-copy compact"><span className="kicker">Исходная точка</span><h1>Что известно об обслуживании?</h1><p>Не нужно вспоминать точные даты. Честное «не знаю» полезнее выдуманного регламента.</p></section>
-      <section className="setup-card questionnaire">
-        <Choice title="История автомобиля" value={baseline.history} onChange={(value) => setBaseline((state) => ({ ...state, history: value }))} options={[["full","Знаю полностью"],["partial","Знаю частично"],["unknown","Почти не знаю"]]} />
-        <Choice title="Последняя замена масла" value={baseline.lastOil} onChange={(value) => setBaseline((state) => ({ ...state, lastOil: value }))} options={[["lt5","До 5 тыс. км"],["5to10","5–10 тыс. км"],["gt10","Больше 10 тыс."],["unknown","Не знаю"]]} />
-        <Choice title="Обслуживание коробки" value={baseline.transmission} onChange={(value) => setBaseline((state) => ({ ...state, transmission: value }))} options={[["recent","Подтверждено"],["old","Давно"],["unknown","Не знаю"]]} />
-        <Choice title="Тормозная жидкость за 2 года" value={baseline.brakeFluid} onChange={(value) => setBaseline((state) => ({ ...state, brakeFluid: value }))} options={[["yes","Менялась"],["no","Не менялась"],["unknown","Не знаю"]]} />
-        <Choice title="Пробег в месяц" value={baseline.monthlyKm} onChange={(value) => setBaseline((state) => ({ ...state, monthlyKm: value }))} options={[["500","До 500 км"],["1200","500–1500 км"],["2500","1500–3000 км"],["4000","Больше 3000 км"]]} />
-        <div className="setup-actions"><button className="secondary-button" onClick={() => setStep(1)}>Назад</button><button className="primary-button" onClick={finish}>Открыть гараж</button></div>
-      </section>
-    </>}
-  </main>;
-}
-
-function Choice({ title, value, onChange, options }) {
-  return <div className="choice-block"><b>{title}</b><div>{options.map(([id, label]) => <button key={id} className={value === id ? "selected" : ""} onClick={() => onChange(id)}>{label}</button>)}</div></div>;
-}
-
-function Topbar({ state, view, onBack, onSettings }) {
-  const isNested = !NAV.some(([id]) => id === view);
-  return <header className="topbar">{isNested ? <button className="back-button" onClick={onBack}>‹ <span>Назад</span></button> : <div><span>Motrix</span><b>{carName(state.vehicle)}</b></div>}<div className="top-actions">{state.plan === "pro" && <em>PRO</em>}<button className="icon-button" onClick={onSettings}><Settings size={20} /></button></div></header>;
-}
-
-function Garage({ state, garage, onPrimary, onAdd, onReview, onHistory }) {
-  const latest = state.events[0];
-  return <div className="garage-screen">
-    <section className={`car-hero${state.vehicle.photo ? " has-photo" : ""}`} style={state.vehicle.photo ? { backgroundImage: `url(${state.vehicle.photo})` } : undefined}>
-      <div className="car-hero-shade" /><div className="car-identity"><span>{state.vehicle.year} · {state.vehicle.engine || "Двигатель не указан"}</span><h1>{carName(state.vehicle)}</h1><p>{km(state.vehicle.mileage)}</p></div>
-      {!state.vehicle.photo && <div className="car-placeholder"><Car size={48} /><span>Добавьте фото своей машины</span></div>}
-      <button className="hero-add" onClick={onAdd}><Plus size={22} /> Добавить событие</button>
-    </section>
-    <div className="garage-content">
-      <section className={`now-card ${garage.tone}`}><header><span>{garage.label}</span><ShieldCheck size={22} /></header><h2>{garage.title}</h2><p>{garage.body}</p><button onClick={onPrimary}>{garage.action}<ChevronRight size={18} /></button></section>
-      <section className="garage-metrics"><div><span>История</span><b>{garage.known}%</b><small>данных заполнено</small></div><div><span>Ближайшие траты</span><b>{money(garage.forecast)}</b><small>{garage.planned.length ? `${garage.planned.length} в плане` : "план пуст"}</small></div><div><span>Документы</span><b>{state.reviews.length}</b><small>разобрано Motrix</small></div></section>
-      <section className="garage-tools"><button onClick={onReview}><FileSearch size={22} /><span><b>Разобрать документ СТО</b><small>Проверить назначения до оплаты</small></span><ChevronRight size={18} /></button><button onClick={onHistory}><History size={22} /><span><b>Вся история автомобиля</b><small>{latest ? `Последнее: ${latest.title}` : "Пока нет событий"}</small></span><ChevronRight size={18} /></button></section>
-    </div>
-  </div>;
-}
-
-function HistoryScreen({ state, setState, onAdd }) {
-  const [filter, setFilter] = useState("all");
-  const items = state.events.filter((item) => filter === "all" || item.status === filter).sort((a,b) => String(b.datePerformed || b.createdAt || "").localeCompare(String(a.datePerformed || a.createdAt || "")));
-  function remove(id) { if (confirm("Удалить событие?")) setState((current) => ({ ...current, events: current.events.filter((item) => item.id !== id) })); }
-  function complete(id) { setState((current) => ({ ...current, events: current.events.map((item) => item.id === id ? { ...item, status: "completed", datePerformed: new Date().toISOString().slice(0,10) } : item) })); }
-  return <div className="screen"><div className="page-title"><div><span>Память автомобиля</span><h1>История</h1></div><button className="square-action" onClick={onAdd}><Plus size={21} /></button></div><div className="segments"><button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>Все</button><button className={filter === "completed" ? "active" : ""} onClick={() => setFilter("completed")}>Выполнено</button><button className={filter === "planned" ? "active" : ""} onClick={() => setFilter("planned")}>План</button></div>{items.length ? <div className="timeline">{items.map((item) => <article key={item.id}><div className={`timeline-dot ${item.status}`} /><div><header><span>{item.status === "planned" ? "В плане" : formatDate(item.datePerformed)}</span><b>{money(item.cost)}</b></header><h3>{item.title}</h3><p>{km(item.mileage || state.vehicle.mileage)}{item.reason ? ` · ${item.reason}` : ""}</p><footer>{item.status === "planned" && <button onClick={() => complete(item.id)}><Check size={15} /> Выполнено</button>}<button onClick={() => remove(item.id)}><Trash2 size={15} /></button></footer></div></article>)}</div> : <Empty icon={<History size={34} />} title="Машина пока ничего не помнит" text="Добавьте обслуживание вручную или загрузите первый заказ-наряд." action="Добавить событие" onAction={onAdd} />}</div>;
-}
-
-function Mechanic({ state, setState, seed }) {
-  const [question, setQuestion] = useState(seed || ""); const [loading, setLoading] = useState(false); const scrollRef = useRef(null);
-  useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [state.chat, loading]);
-  async function ask(text = question) { const clean = text.trim(); if (!clean || loading) return; setState((current) => ({ ...current, chat: [...current.chat, { role:"user", text:clean }] })); setQuestion(""); setLoading(true); try { const response = await fetch("/api/ai-mechanic", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ vehicle:state.vehicle, data:{ mileage:state.vehicle.mileage, logs:state.events }, question:clean, history:state.chat.slice(-6).map((item) => ({ role:item.role === "ai" ? "assistant" : item.role, content:item.text })) }) }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error || "Нет ответа"); setState((current) => ({ ...current, chat:[...current.chat,{role:"ai",text:body.answer}] })); } catch(error) { setState((current) => ({ ...current, chat:[...current.chat,{role:"ai",text:`Не удалось ответить: ${error.message}`}] })); } setLoading(false); }
-  const prompts = ["Что делать с машиной сейчас?","Какие пробелы есть в истории?","Подготовь список вопросов для СТО"];
-  return <div className="screen mechanic-page"><div className="mechanic-head"><div className="mechanic-avatar">AI</div><div><span>Знает вашу машину</span><h1>Motrix-механик</h1><p>{carName(state.vehicle)} · {km(state.vehicle.mileage)} · {state.events.length} событий</p></div></div><div className="chat" ref={scrollRef}>{!state.chat.length && <div className="mechanic-intro"><h2>Спросите как владельцу, а не как инженеру</h2><p>Механик учитывает профиль и историю, отмечает неизвестное и не выдаёт догадки за диагноз.</p><div>{prompts.map((prompt) => <button key={prompt} onClick={() => ask(prompt)}>{prompt}</button>)}</div></div>}{state.chat.map((message,index) => <div className={`bubble ${message.role}`} key={index}>{message.text}</div>)}{loading && <div className="bubble ai typing">Сверяю с историей...</div>}</div><div className="composer"><textarea rows="2" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Например: меняют ли мне лишнее?" /><button disabled={!question.trim() || loading} onClick={() => ask()}><ChevronRight size={20} /></button></div></div>;
-}
-
-function Passport({ state, onReview, onPricing, onSettings, onOpenReview }) {
-  const known = coverage(state); const completed = state.events.filter((item) => item.status === "completed"); const spent = completed.reduce((sum,item) => sum + Number(item.cost || 0),0);
-  return <div className="screen passport-page"><div className="page-title"><div><span>Цифровой двойник</span><h1>Паспорт</h1></div></div><section className="passport-identity"><div className="passport-photo" style={state.vehicle.photo ? { backgroundImage:`url(${state.vehicle.photo})` } : undefined}>{!state.vehicle.photo && <Car size={38} />}</div><div><h2>{carName(state.vehicle)}</h2><p>{state.vehicle.year} · {state.vehicle.engine || "Двигатель не указан"} · {state.vehicle.transmission || "Коробка не указана"}</p><code>{state.vehicle.vin || "VIN не указан"}</code></div></section><section className="passport-numbers"><div><b>{known}%</b><span>полнота профиля</span></div><div><b>{completed.length}</b><span>подтверждённых событий</span></div><div><b>{money(spent)}</b><span>учтённые расходы</span></div></section><section className="passport-section"><header><div><span>Документы СТО</span><h2>Независимые разборы</h2></div><button onClick={onReview}><Plus size={17} /> Добавить</button></header>{state.reviews.length ? <div className="document-list">{state.reviews.map((review) => <button key={review.id} onClick={() => onOpenReview(review)}><ReceiptText size={21} /><span><b>{review.documentTitle}</b><small>{formatDate(review.createdAt)} · уверенность {review.confidence}%</small></span><ChevronRight size={18} /></button>)}</div> : <p className="passport-empty">Загрузите смету или заказ-наряд, чтобы сохранить не только файл, но и понятный разбор.</p>}</section><section className="pro-card"><div><Sparkles size={22} /><span>Motrix Pro</span></div><h2>Машина, которую не приходится вспоминать</h2><p>Безлимитные разборы, расширенный AI, облачная история и досье для продажи.</p><button onClick={onPricing}>Посмотреть Pro</button></section><button className="settings-row" onClick={onSettings}><Settings size={20} /><span><b>Настройки и данные</b><small>Фото, экспорт, удаление и правовая информация</small></span><ChevronRight size={18} /></button></div>;
-}
-
-function ReviewScreen({ state, initial, onSaved, onAsk }) {
-  const inputRef = useRef(null); const [file,setFile] = useState(null); const [consent,setConsent] = useState(Boolean(state.consentAt)); const [loading,setLoading] = useState(false); const [error,setError] = useState(""); const [review,setReview] = useState(initial || null);
-  async function run() { if(!file||!consent)return; setLoading(true);setError("");const form=new FormData();form.append("file",file);form.append("vehicle",JSON.stringify(state.vehicle));form.append("events",JSON.stringify(state.events.slice(0,30)));try{const response=await fetch("/api/review-estimate",{method:"POST",body:form});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.error||"Не удалось выполнить разбор");const result={...body.review,id:crypto.randomUUID(),createdAt:new Date().toISOString(),fileName:file.name};setReview(result);onSaved(result,consent);}catch(reason){setError(reason.message)}setLoading(false);}
-  function plan(){const events=(review.items||[]).filter((item)=>item.verdict!=="insufficient").map((item)=>({id:crypto.randomUUID(),title:item.title,cost:item.cost||0,status:"planned",source:"review",reason:item.reason,mileage:state.vehicle.mileage,createdAt:new Date().toISOString()}));onSaved(review,consent,events);}
-  if(review)return <div className="screen review-result"><div className="page-title"><div><span>Разбор документа</span><h1>{review.documentTitle}</h1></div><div className="score-box"><b>{review.confidence}%</b><small>уверенность</small></div></div><div className="review-summary"><p>{review.summary}</p><b>{money(review.totalCost)}</b></div><div className="review-items">{(review.items||[]).map((item,index)=>{const meta=VERDICT[item.verdict]||VERDICT.question;return <article className={`review-item ${meta.tone}`} key={`${item.title}-${index}`}><header><span>{meta.label}</span><b>{money(item.cost)}</b></header><h3>{item.title}</h3><p>{item.reason}</p>{item.evidence&&<small><b>Основание:</b> {item.evidence}</small>}{item.questionToService&&<div className="service-question"><CircleHelp size={17}/><span>{item.questionToService}</span></div>}</article>})}</div>{review.questions?.length>0&&<section className="questions-card"><h2>Что спросить у сервиса</h2><ol>{review.questions.map((question)=><li key={question}>{question}</li>)}</ol></section>}<div className="stack-actions"><button className="primary-button" onClick={plan}><Check size={18}/> Сохранить работы в план</button><button className="secondary-button full" onClick={()=>onAsk(review)}>Обсудить с механиком</button></div></div>;
-  return <div className="screen review-upload"><div className="page-title"><div><span>Инструмент Motrix</span><h1>Разобрать документ СТО</h1></div></div><p className="lead">Проверим логику назначений, покажем недостающие основания и подготовим вопросы перед оплатой.</p><button className={`upload-zone${file?" ready":""}`} onClick={()=>inputRef.current?.click()}>{file?<><Check size={28}/><b>{file.name}</b><span>Нажмите, чтобы заменить</span></>:<><Upload size={30}/><b>Фото сметы или заказ-наряда</b><span>JPG, PNG или WEBP до 5 МБ</span></>}</button><input ref={inputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" onChange={(event)=>setFile(event.target.files?.[0]||null)}/><label className="consent-row"><input type="checkbox" checked={consent} onChange={(event)=>setConsent(event.target.checked)}/><span>Разрешаю однократно передать изображение AI-провайдеру. Перед загрузкой закройте персональные данные.</span></label>{error&&<div className="error-box"><AlertTriangle size={18}/>{error}</div>}<button className="primary-button" disabled={!file||!consent||loading} onClick={run}>{loading?"Изучаю документ...":"Получить разбор"}</button><div className="review-promise"><ShieldCheck size={22}/><p><b>Motrix не ставит диагноз по бумаге</b><span>Если оснований недостаточно, результатом будет вопрос сервису, а не выдуманный вердикт.</span></p></div></div>;
-}
-
-function AddMenu({ onClose, onManual, onReview, onMileage }) { return <Modal title="Добавить в Motrix" onClose={onClose}><div className="action-menu"><button onClick={onManual}><Plus size={22}/><span><b>Работу или расход</b><small>Добавить вручную</small></span><ChevronRight size={18}/></button><button onClick={onReview}><Camera size={22}/><span><b>Документ СТО</b><small>Распознать и проверить назначения</small></span><ChevronRight size={18}/></button><button onClick={onMileage}><Gauge size={22}/><span><b>Текущий пробег</b><small>Обновить показание одометра</small></span><ChevronRight size={18}/></button></div></Modal>; }
-
-function EventModal({ vehicle, onClose, onSave }) { const [form,setForm]=useState({title:"",mileage:vehicle.mileage,cost:"",datePerformed:new Date().toISOString().slice(0,10),status:"completed",reason:""});const update=(key)=>(event)=>setForm((state)=>({...state,[key]:event.target.value}));return <Modal title="Событие автомобиля" onClose={onClose}><form className="modal-form" onSubmit={(event)=>{event.preventDefault();onSave({...form,id:crypto.randomUUID(),mileage:Number(form.mileage),cost:Number(form.cost||0),createdAt:new Date().toISOString(),source:"manual"})}}><label><span>Работа или расход</span><input value={form.title} onChange={update("title")} placeholder="Замена масла двигателя" required/></label><div className="form-grid"><label><span>Пробег</span><input type="number" value={form.mileage} onChange={update("mileage")} required/></label><label><span>Стоимость</span><input type="number" value={form.cost} onChange={update("cost")} placeholder="0"/></label><label><span>Дата</span><input type="date" value={form.datePerformed} onChange={update("datePerformed")}/></label><label><span>Статус</span><select value={form.status} onChange={update("status")}><option value="completed">Выполнено</option><option value="planned">В плане</option></select></label></div><label><span>Комментарий</span><textarea value={form.reason} onChange={update("reason")} placeholder="Что важно запомнить"/></label><button className="primary-button">Сохранить</button></form></Modal>; }
-
-function MileageModal({ value, onClose, onSave }) { const [mileage,setMileage]=useState(value);return <Modal title="Обновить пробег" onClose={onClose}><div className="mileage-form"><label><span>Текущий пробег</span><input type="number" value={mileage} onChange={(event)=>setMileage(event.target.value)}/></label><button className="primary-button" onClick={()=>onSave(Number(mileage))}>Сохранить {km(mileage)}</button></div></Modal>; }
-
-function BaselineModal({ baseline, onClose, onSave }) { const [data,setData]=useState(baseline||{history:"",lastOil:"",transmission:"",brakeFluid:"",monthlyKm:""});return <Modal title="Исходная история" onClose={onClose}><div className="questionnaire modal-questions"><Choice title="История автомобиля" value={data.history} onChange={(value)=>setData((state)=>({...state,history:value}))} options={[["full","Полная"],["partial","Частичная"],["unknown","Не знаю"]]}/><Choice title="Последняя замена масла" value={data.lastOil} onChange={(value)=>setData((state)=>({...state,lastOil:value}))} options={[["lt5","До 5 тыс."],["5to10","5–10 тыс."],["gt10","Больше 10 тыс."],["unknown","Не знаю"]]}/><Choice title="Коробка" value={data.transmission} onChange={(value)=>setData((state)=>({...state,transmission:value}))} options={[["recent","Подтверждено"],["old","Давно"],["unknown","Не знаю"]]}/><Choice title="Тормозная жидкость" value={data.brakeFluid} onChange={(value)=>setData((state)=>({...state,brakeFluid:value}))} options={[["yes","Менялась"],["no","Не менялась"],["unknown","Не знаю"]]}/><Choice title="Пробег в месяц" value={data.monthlyKm} onChange={(value)=>setData((state)=>({...state,monthlyKm:value}))} options={[["500","До 500"],["1200","500–1500"],["2500","1500–3000"],["4000","Больше 3000"]]}/><button className="primary-button" onClick={()=>onSave(data)}>Сохранить</button></div></Modal>; }
-
-function Pricing({ onClose }) { const [error,setError]=useState("");async function buy(product){setError("");try{await startCheckout(product)}catch(reason){setError(reason.message)}}return <Modal title="Motrix Pro" onClose={onClose} wide><p className="modal-lead">Базовая память автомобиля бесплатна. Pro оплачивает автоматизацию и регулярную помощь.</p><div className="pricing-grid"><article><span>Разово</span><h3>Разбор документа</h3><strong>399 ₽</strong><ul><li><Check size={16}/>Один документ</li><li><Check size={16}/>Вердикты и вопросы</li></ul><button className="secondary-button full" onClick={()=>buy("single_review")}>Купить разбор</button></article><article className="featured"><span>На год</span><h3>Motrix Pro</h3><strong>1 990 ₽</strong><ul><li><Check size={16}/>Безлимитные разборы</li><li><Check size={16}/>Расширенный AI</li><li><Check size={16}/>Облачное досье</li></ul><button className="primary-button" onClick={()=>buy("pro_year")}>Подключить Pro</button></article></div>{error&&<div className="info-box"><CircleHelp size={18}/>{error}</div>}<small className="legal-note">Оплата включится после подключения эквайринга.</small></Modal>; }
-
-function SettingsModal({ state, setState, onClose }) { const importRef=useRef(null),photoRef=useRef(null);async function restore(file){try{setState(await importState(file));onClose()}catch(error){alert(error.message)}}async function photo(file){if(!file)return;const image=await readImage(file);setState((current)=>({...current,vehicle:{...current.vehicle,photo:image}}))}return <Modal title="Настройки и данные" onClose={onClose}><div className="vehicle-card"><Car size={23}/><div><b>{carName(state.vehicle)}</b><small>{state.vehicle.year} · {km(state.vehicle.mileage)} · {state.vehicle.vin||"VIN не указан"}</small></div></div><div className="settings-list"><button onClick={()=>photoRef.current?.click()}><Camera size={19}/><span><b>Фото автомобиля</b><small>Заменить визуал гаража</small></span><ChevronRight size={17}/></button><input ref={photoRef} hidden type="file" accept="image/*" onChange={(event)=>photo(event.target.files?.[0])}/><button onClick={()=>exportState(state)}><Download size={19}/><span><b>Экспорт данных</b><small>Резервная копия JSON</small></span><ChevronRight size={17}/></button><button onClick={()=>importRef.current?.click()}><Upload size={19}/><span><b>Импорт данных</b><small>Восстановить копию</small></span><ChevronRight size={17}/></button><input ref={importRef} hidden type="file" accept="application/json" onChange={(event)=>event.target.files?.[0]&&restore(event.target.files[0])}/><button className="danger" onClick={()=>{if(confirm("Удалить все данные Motrix?")){clearState();location.reload()}}}><Trash2 size={19}/><span><b>Удалить все данные</b><small>Без возможности восстановления</small></span><ChevronRight size={17}/></button></div><section className="legal-block"><h3>О рекомендациях</h3><p>Motrix анализирует предоставленные сведения и не проводит физическую диагностику. Решения, влияющие на безопасность, нужно подтвердить у квалифицированного специалиста.</p><h3>Хранение</h3><p>Профиль хранится в браузере. Изображения документов передаются AI-провайдеру только после отдельного согласия.</p></section></Modal>; }
-
-function Empty({ icon,title,text,action,onAction }) { return <div className="empty-state">{icon}<h2>{title}</h2><p>{text}</p><button className="secondary-button" onClick={onAction}>{action}</button></div>; }
-
 export default function App() {
-  const [state,setState]=useState(initialState); const [view,setView]=useState("garage"); const [modal,setModal]=useState(null); const [review,setReview]=useState(null); const [seed,setSeed]=useState(""); const garage=useMemo(()=>deriveGarage(state),[state]);
-  useEffect(()=>saveState(state),[state]);
-  if(!state.vehicle)return <Setup onComplete={(vehicle,baseline)=>setState({...EMPTY_STATE,vehicle,baseline,createdAt:new Date().toISOString()})}/>;
-  function openAdd(){setModal("add")} function openReview(selected=null){setReview(selected);setView("review");setModal(null)}
-  function saveReview(result,consent,events=[]){setState((current)=>({...current,consentAt:consent?current.consentAt||new Date().toISOString():current.consentAt,reviews:current.reviews.some((item)=>item.id===result.id)?current.reviews:[result,...current.reviews],events:events.length?[...events,...current.events]:current.events}))}
-  function askReview(result){setSeed(`Объясни выводы по последнему документу: ${result.summary}`);setView("mechanic")}
-  function primary(){if(!state.baseline)return setModal("baseline");if(state.reviews[0]&&(garage.tone==="warn"))return openReview(state.reviews[0]);if(garage.planned.length)return setView("history");if(state.baseline.lastOil==="gt10")return setModal("event");openAdd()}
-  const navVisible=NAV.some(([id])=>id===view);
-  return <div className="app-shell"><Topbar state={state} view={view} onBack={()=>setView("garage")} onSettings={()=>setModal("settings")}/><main>{view==="garage"&&<Garage state={state} garage={garage} onPrimary={primary} onAdd={openAdd} onReview={()=>openReview()} onHistory={()=>setView("history")}/>} {view==="history"&&<HistoryScreen state={state} setState={setState} onAdd={openAdd}/>} {view==="mechanic"&&<Mechanic state={state} setState={setState} seed={seed}/>} {view==="passport"&&<Passport state={state} onReview={()=>openReview()} onPricing={()=>setModal("pricing")} onSettings={()=>setModal("settings")} onOpenReview={openReview}/>} {view==="review"&&<ReviewScreen state={state} initial={review} onSaved={saveReview} onAsk={askReview}/>}</main>{navVisible&&<nav className="bottom-nav">{NAV.map(([id,Icon,label])=><button key={id} className={view===id?"active":""} onClick={()=>setView(id)}><Icon size={21}/><span>{label}</span></button>)}</nav>}{modal==="add"&&<AddMenu onClose={()=>setModal(null)} onManual={()=>setModal("event")} onReview={()=>openReview()} onMileage={()=>setModal("mileage")}/>} {modal==="event"&&<EventModal vehicle={state.vehicle} onClose={()=>setModal(null)} onSave={(event)=>{setState((current)=>({...current,vehicle:{...current.vehicle,mileage:Math.max(current.vehicle.mileage,event.mileage)},events:[event,...current.events]}));setModal(null)}}/>} {modal==="mileage"&&<MileageModal value={state.vehicle.mileage} onClose={()=>setModal(null)} onSave={(value)=>{setState((current)=>({...current,vehicle:{...current.vehicle,mileage:value}}));setModal(null)}}/>} {modal==="baseline"&&<BaselineModal baseline={state.baseline} onClose={()=>setModal(null)} onSave={(baseline)=>{setState((current)=>({...current,baseline}));setModal(null)}}/>} {modal==="pricing"&&<Pricing onClose={()=>setModal(null)}/>} {modal==="settings"&&<SettingsModal state={state} setState={setState} onClose={()=>setModal(null)}/>}</div>;
+  const [tab, setTab] = useState("home");
+  const [vehicle, setVehicle]       = useState(() => JSON.parse(localStorage.getItem("autopulse-vehicle") || "null") || null);
+  const [profile, setProfile]       = useState(() => JSON.parse(localStorage.getItem("autopulse-profile") || "null"));
+  const [analysis, setAnalysis]     = useState(() => JSON.parse(localStorage.getItem("autopulse-analysis") || "null"));
+  const [ownerProfile, setOwnerProfile] = useState(() => JSON.parse(localStorage.getItem("autopulse-owner-profile") || "null"));
+  const [data, setData]             = useState(() => JSON.parse(localStorage.getItem("autopulse-data") || "null") || defaultData);
+  const [newMileage, setNewMileage] = useState(data.mileage);
+  const [reminders, setReminders]   = useState(() => getActiveReminders());
+  const [chat, setChat]             = useState(() => {
+    try { return JSON.parse(localStorage.getItem(CHAT_KEY) || "[]"); } catch { return []; }
+  });
+  const [vehicleRender, setVehicleRender] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(RENDER_KEY) || "null");
+      return saved || emptyRenderState();
+    } catch {
+      return emptyRenderState();
+    }
+  });
+
+  const [vehicleForm, setVehicleForm] = useState({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", color: "", mileage: "" });
+  const [manualOpen, setManualOpen]   = useState(false);
+  const [editingLogId, setEditingLogId] = useState(null);
+  const [workDraft, setWorkDraft]     = useState({ normalizedId: "engine_service", title: "ТО двигателя", mileage: data.mileage, cost: "", datePerformed: todayIso(), note: "" });
+  const [pendingLogs, setPendingLogs] = useState([]);
+  const [pendingDocMileage, setPendingDocMileage] = useState(null);
+  const [profileOnboardingOpen, setProfileOnboardingOpen] = useState(false);
+
+  const [question, setQuestion] = useState("");
+
+  const [isDetecting, setIsDetecting]     = useState(false);
+  const [isAnalyzing, setIsAnalyzing]     = useState(false);
+  const [isAsking, setIsAsking]           = useState(false);
+  const [isParsingSts, setIsParsingSts]   = useState(false);
+  const [isParsingDoc, setIsParsingDoc]   = useState(false);
+  const [isGeneratingRender, setIsGeneratingRender] = useState(false);
+
+  useEffect(() => { localStorage.setItem("autopulse-data", JSON.stringify(data)); }, [data]);
+  useEffect(() => { if (vehicle) localStorage.setItem("autopulse-vehicle", JSON.stringify(vehicle)); }, [vehicle]);
+  useEffect(() => { localStorage.setItem(RENDER_KEY, JSON.stringify(vehicleRender || emptyRenderState())); }, [vehicleRender]);
+  useEffect(() => {
+    const limited = chat.slice(-20); // Keep last 20 messages
+    localStorage.setItem(CHAT_KEY, JSON.stringify(limited));
+  }, [chat]);
+
+  // ── Orchestrator — single source of truth (vehicleBrain) ─────────────────
+  const orch = useMemo(() => computeOrchestratorState({
+    vehicle, profile, data, ownerProfile, analysis, defaultRules: DEFAULT_RULES,
+  }), [vehicle, profile, data, ownerProfile, analysis]);
+
+  // ── Reminders — regenerate when schedule changes ──────────────────────────
+  useEffect(() => {
+    if (!vehicle) return;
+    const updated = generateReminders({ schedule: orch.schedule, data, ownerProfile });
+    setReminders(updated.filter((r) => r.status === "active"));
+  }, [orch.schedule, data, ownerProfile, vehicle]);
+
+  function clearVehicleRender() {
+    localStorage.removeItem(RENDER_KEY);
+    setVehicleRender(emptyRenderState());
+  }
+
+  async function generateVehicleRender(customVehicle = vehicle, options = {}) {
+    if (!customVehicle?.brand || !customVehicle?.model) return;
+
+    const fingerprint = getVehicleRenderFingerprint(customVehicle);
+    if (!options.force && vehicleRender?.status === "ready" && vehicleRender?.vehicleFingerprint === fingerprint) {
+      return;
+    }
+
+    try {
+      setIsGeneratingRender(true);
+      setVehicleRender((prev) => ({
+        ...prev,
+        status: "loading",
+        error: "",
+        vehicleFingerprint: fingerprint,
+      }));
+
+      const response = await fetch("/api/generate-car-render", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vehicle: customVehicle }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.details || result.error || `Render generation failed: HTTP ${response.status}`);
+      }
+      if (!result.imageUrl) {
+        throw new Error("Render API completed, but imageUrl is empty");
+      }
+
+      setVehicleRender({
+        status: "ready",
+        imageUrl: result.imageUrl,
+        prompt: result.prompt || "",
+        model: result.model || "",
+        generatedAt: result.generatedAt || new Date().toISOString(),
+        error: "",
+        vehicleFingerprint: fingerprint,
+      });
+    } catch (error) {
+      console.error("Vehicle render generation failed", error);
+      setVehicleRender((prev) => ({
+        ...prev,
+        status: "error",
+        error: error.message,
+        vehicleFingerprint: fingerprint,
+      }));
+    } finally {
+      setIsGeneratingRender(false);
+    }
+  }
+
+  // ── API: analyze vehicle ──────────────────────────────────────────────────
+  async function analyzeVehicle(customData = data, customProfile = profile, customVehicle = vehicle, customOwnerProfile = ownerProfile) {
+    if (!customVehicle || !customProfile || !customData) return;
+    try {
+      setIsAnalyzing(true);
+      const orchSummary = {
+        healthScore: orch.healthScore,
+        overdueItems: orch.urgentActions.filter((i) => i.status === "Просрочено").map((i) => i.name),
+        soonItems: orch.urgentActions.filter((i) => i.status === "Скоро").map((i) => i.name),
+        unknownCritical: orch.unknownAreas.filter((u) => u.severity === "high").map((u) => u.name),
+      };
+      const response = await fetch("/api/analyze-vehicle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vehicle: customVehicle, profile: customProfile, data: customData, ownerProfile: customOwnerProfile, orchestratorSummary: orchSummary }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.details || result.error || "Analysis failed");
+      setAnalysis(result.analysis);
+      localStorage.setItem("autopulse-analysis", JSON.stringify(result.analysis));
+    } catch (error) { alert("Ошибка анализа: " + error.message); }
+    finally { setIsAnalyzing(false); }
+  }
+
+  // ── API: create vehicle profile ───────────────────────────────────────────
+  async function detectVehicleByVin() {
+    const cleaned = sanitizeVehicleForm(vehicleForm);
+    const vin = cleaned.vin;
+    if (!vin) return alert("Введите VIN");
+    if (vin.length !== 17) return alert("VIN должен содержать 17 символов");
+    try {
+      setIsDetecting(true);
+      const response = await fetch("/api/create-vehicle-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vin, mileage: Number(cleaned.mileage || 0), color: cleaned.color }),
+      });
+      const result = await response.json();
+      if (!response.ok) return alert(result.details || result.error || "Не удалось определить автомобиль");
+      const mergedVehicle = {
+        ...result.vehicle,
+        color: String(cleaned.color || result.vehicle?.color || "").trim(),
+      };
+      const nextData = emptyVehicleData(cleaned.mileage);
+      setVehicle(mergedVehicle);
+      setProfile(result.profile || genericProfileFor(mergedVehicle));
+      setAnalysis(null);
+      setOwnerProfile(null);
+      setData(nextData);
+      setNewMileage(nextData.mileage);
+      setWorkDraft((p) => ({ ...p, mileage: nextData.mileage }));
+      localStorage.setItem("autopulse-profile", JSON.stringify(result.profile || genericProfileFor(mergedVehicle)));
+      localStorage.removeItem("autopulse-analysis");
+      localStorage.removeItem("autopulse-owner-profile");
+      localStorage.removeItem("autopulse-reminders");
+      setReminders([]);
+      generateVehicleRender(mergedVehicle);
+      setProfileOnboardingOpen(true);
+    } catch (error) { alert("Ошибка связи с сервером: " + error.message); }
+    finally { setIsDetecting(false); }
+  }
+
+  // ── API: parse STS photo ──────────────────────────────────────────────────
+  async function parseStsPhoto(event) {
+    const originalFile = event.target.files?.[0];
+    if (!originalFile) return;
+    try {
+      setIsParsingSts(true);
+      const file = await compressImage(originalFile);
+      const formData = new FormData();
+      formData.append("file", file); formData.append("mileage", String(vehicleForm.mileage || 0));
+      const response = await fetch("/api/parse-sts", { method: "POST", body: formData });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.details || result.error || "STS parse failed");
+      setVehicleForm((prev) => ({
+        ...prev,
+        vin: result.extracted?.vin || result.vehicle?.vin || prev.vin,
+        brand: result.vehicle?.brand || result.extracted?.brand || prev.brand,
+        model: result.vehicle?.model || result.extracted?.model || prev.model,
+        generation: result.vehicle?.generation || prev.generation,
+        year: result.vehicle?.year || result.extracted?.year || prev.year,
+        engine: result.vehicle?.engine || prev.engine,
+        transmission: result.vehicle?.transmission || prev.transmission,
+        drive: result.vehicle?.drive || prev.drive,
+        color: result.vehicle?.color || result.extracted?.color || prev.color,
+      }));
+      // STS data is now placed into the onboarding form. The user can continue by VIN or manual confirmation.
+    } catch (error) { alert("Ошибка распознавания СТС: " + error.message); }
+    finally { setIsParsingSts(false); event.target.value = ""; }
+  }
+
+  // ── API: parse service document ───────────────────────────────────────────
+  async function parseServiceDocument(event) {
+    const originalFile = event.target.files?.[0];
+    if (!originalFile) return;
+    if (!vehicle) return alert("Сначала добавьте автомобиль");
+    // PDF is not supported — only images
+    if (originalFile.type === "application/pdf" || originalFile.name.toLowerCase().endsWith(".pdf")) {
+      return alert("PDF-файлы пока не поддерживаются. Пожалуйста, сделайте фото документа.");
+    }
+    try {
+      setIsParsingDoc(true);
+      const file = await compressImage(originalFile);
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("vehicle", JSON.stringify(vehicle));
+      formData.append("profile", JSON.stringify(profile));
+      formData.append("mileage", String(data.mileage));
+      const response = await fetch("/api/parse-service-doc", { method: "POST", body: formData });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.details || result.error || "Document parse failed");
+      const parsedLogs = Array.isArray(result.logs) ? result.logs : [];
+      if (!parsedLogs.length) return alert("Не удалось найти работы в документе");
+      if (result.documentMileage && Number(result.documentMileage) > Number(data.mileage)) {
+        setPendingDocMileage(Number(result.documentMileage));
+      }
+      setPendingLogs(parsedLogs.map((log, index) => ({
+        tempId: Date.now() + index,
+        normalizedId: log.normalizedId || "other",
+        title: log.title || "Работа из документа",
+        mileage: Number(log.mileage || data.mileage),
+        cost: Number(log.cost || 0),
+        datePerformed: log.datePerformed || todayIso(),
+        note: log.note || "",
+        confidence: log.confidence || "medium",
+        sourceText: log.sourceText || "",
+        source: "scanned",
+      })));
+    } catch (error) { alert("Ошибка обработки документа: " + error.message); }
+    finally { setIsParsingDoc(false); event.target.value = ""; }
+  }
+
+  // ── API: AI mechanic chat (with history) ──────────────────────────────────
+  async function askAi(forcedQuestion) {
+    const q = forcedQuestion ?? question;
+    if (!q?.trim()) return;
+    setQuestion("");
+    setIsAsking(true);
+    const userMsg = { role: "user", text: q };
+    const thinkingMsg = { role: "ai", text: "Думаю..." };
+    setChat((prev) => [...prev, userMsg, thinkingMsg]);
+
+    // Build history for API (last 6 messages, excluding current thinking placeholder)
+    const historyForApi = chat.slice(-6).map((m) => ({
+      role: m.role === "ai" ? "assistant" : "user",
+      content: m.text,
+    }));
+
+    try {
+      const response = await fetch("/api/ai-mechanic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vehicle, profile, data, analysis, question: q,
+          ownerProfile,
+          localBriefing: orch.localBriefing,
+          history: historyForApi,
+          orchestratorSummary: {
+            healthScore: orch.healthScore,
+            urgentActions: orch.urgentActions.slice(0, 3).map((i) => ({ name: i.name, status: i.status, left: i.left })),
+            unknownAreas: orch.unknownAreas.filter((u) => u.severity === "high").map((u) => u.name),
+            costForecast: orch.costForecast,
+          },
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.details || result.error || "AI mechanic failed");
+      setChat((prev) => { const u = [...prev]; u[u.length - 1] = { role: "ai", text: result.answer }; return u; });
+    } catch (error) {
+      setChat((prev) => { const u = [...prev]; u[u.length - 1] = { role: "ai", text: "Ошибка: " + error.message }; return u; });
+    } finally { setIsAsking(false); }
+  }
+
+  // ── Reminder handlers ─────────────────────────────────────────────────────
+  function handleReminderDismiss(id) {
+    const updated = dismissReminder(id);
+    setReminders(updated.filter((r) => r.status === "active"));
+  }
+
+  function handleReminderDone(id) {
+    const updated = doneReminder(id);
+    setReminders(updated.filter((r) => r.status === "active"));
+  }
+
+  // ── Local mutations ───────────────────────────────────────────────────────
+  function updateVehicleField(field, value) { setVehicleForm((prev) => sanitizeVehicleForm({ ...prev, [field]: value })); }
+
+  function saveOwnerProfile(profileData) {
+    setOwnerProfile(profileData);
+    localStorage.setItem("autopulse-owner-profile", JSON.stringify(profileData));
+    setProfileOnboardingOpen(false);
+    setTab("home");
+    setTimeout(() => analyzeVehicle(data, profile, vehicle, profileData), 300);
+  }
+
+  function saveVehicleManually(formOverride = null) {
+    const validation = validateVehicleForm(formOverride || vehicleForm);
+    if (!validation.ok) return alert(validation.errors.join("\n"));
+    const clean = validation.vehicleForm;
+    const v = {
+      vin: clean.vin,
+      brand: clean.brand,
+      model: clean.model,
+      generation: clean.generation,
+      year: Number(clean.year),
+      engine: clean.engine,
+      transmission: clean.transmission,
+      drive: clean.drive,
+      color: clean.color,
+      market: "manual",
+    };
+    const nextProfile = genericProfileFor(v);
+    const nextData = emptyVehicleData(clean.mileage);
+    setVehicle(v);
+    setProfile(nextProfile);
+    setAnalysis(null);
+    setOwnerProfile(null);
+    setData(nextData);
+    setNewMileage(nextData.mileage);
+    setWorkDraft((p) => ({ ...p, mileage: nextData.mileage }));
+    localStorage.setItem("autopulse-profile", JSON.stringify(nextProfile));
+    localStorage.removeItem("autopulse-analysis");
+    localStorage.removeItem("autopulse-owner-profile");
+    localStorage.removeItem("autopulse-reminders");
+    setReminders([]);
+    generateVehicleRender(v);
+    setProfileOnboardingOpen(true);
+  }
+
+  function fillDemoVehicle() { setVehicleForm(sanitizeVehicleForm({ vin: "JF1SK7AC2MG117103", brand: "Subaru", model: "Forester", generation: "SK", year: "2020", engine: "FB20", transmission: "CVT", drive: "AWD", color: "темно-синий металлик", mileage: 86000 })); }
+
+  function saveMileage() {
+    const nextData = { ...data, mileage: Number(newMileage) };
+    setData(nextData);
+    setTimeout(() => analyzeVehicle(nextData, profile, vehicle), 300);
+  }
+
+  function openManualForm(log = null) {
+    if (log) {
+      setEditingLogId(log.id);
+      setWorkDraft({ normalizedId: log.normalizedId || "other", title: log.title || "", mileage: log.mileage || data.mileage, cost: log.cost || "", datePerformed: log.datePerformed || todayIso(), note: log.note || "" });
+    } else {
+      setEditingLogId(null);
+      const option = WORK_OPTIONS[0];
+      setWorkDraft({ normalizedId: option.id, title: option.label, mileage: data.mileage, cost: "", datePerformed: todayIso(), note: "" });
+    }
+    setManualOpen(true);
+  }
+
+  function saveWorkDraft() {
+    const option = WORK_OPTIONS.find((i) => i.id === workDraft.normalizedId);
+    const log = {
+      id: editingLogId || Date.now(),
+      normalizedId: workDraft.normalizedId,
+      title: workDraft.title || option?.label || "Работа",
+      mileage: Number(workDraft.mileage || data.mileage),
+      cost: Number(workDraft.cost || 0),
+      datePerformed: workDraft.datePerformed || "",
+      dateAdded: editingLogId ? data.logs.find((i) => i.id === editingLogId)?.dateAdded || todayIso() : todayIso(),
+      note: workDraft.note || "",
+      source: "manual",
+    };
+    if (isDuplicateLog(log, data.logs, editingLogId)) {
+      return alert("Такая запись уже есть в журнале");
+    }
+    const nextLogs = editingLogId ? data.logs.map((i) => i.id === editingLogId ? log : i) : [log, ...data.logs];
+    const maxMileage = Math.max(data.mileage, ...nextLogs.map((i) => Number(i.mileage || 0)));
+    const nextData = { ...data, mileage: maxMileage, logs: nextLogs };
+    setData(nextData); setNewMileage(maxMileage); setManualOpen(false); setEditingLogId(null);
+    setTimeout(() => analyzeVehicle(nextData, profile, vehicle), 300);
+  }
+
+  function applyPendingLogs() {
+    const normalized = pendingLogs.map((log) => ({
+      id: Date.now() + Math.random(),
+      normalizedId: log.normalizedId || "other",
+      title: log.title,
+      mileage: Number(log.mileage || data.mileage),
+      cost: Number(log.cost || 0),
+      datePerformed: log.datePerformed || "",
+      dateAdded: todayIso(),
+      note: log.note || "",
+      source: "scanned",
+    }));
+    const maxMileage = Math.max(data.mileage, pendingDocMileage || 0, ...normalized.map((l) => Number(l.mileage || 0)));
+    const uniqueLogs = normalized.filter((log, index, list) => {
+      const duplicateInJournal = isDuplicateLog(log, data.logs);
+      const duplicateInBatch = list.findIndex((item) => logFingerprint(item) === logFingerprint(log)) !== index;
+      return !duplicateInJournal && !duplicateInBatch;
+    });
+    if (!uniqueLogs.length) {
+      alert("Все распознанные записи уже есть в журнале");
+      return;
+    }
+    const nextData = { ...data, mileage: maxMileage, logs: [...uniqueLogs, ...data.logs] };
+    setData(nextData); setNewMileage(maxMileage); setWorkDraft((p) => ({ ...p, mileage: maxMileage }));
+    setPendingLogs([]); setPendingDocMileage(null); setTab("journal");
+    setTimeout(() => analyzeVehicle(nextData, profile, vehicle), 300);
+  }
+
+  function updatePendingLog(tempId, field, value) { setPendingLogs((prev) => prev.map((l) => l.tempId === tempId ? { ...l, [field]: value } : l)); }
+  function removePendingLog(tempId) { setPendingLogs((prev) => prev.filter((l) => l.tempId !== tempId)); }
+
+  function deleteLog(id) {
+    if (!confirm("Удалить запись из журнала?")) return;
+    const nextData = { ...data, logs: data.logs.filter((l) => l.id !== id) };
+    setData(nextData);
+    setTimeout(() => analyzeVehicle(nextData, profile, vehicle), 300);
+  }
+
+  function resetData() {
+    if (!confirm("Сбросить данные Motrix?")) return;
+    ["autopulse-data","autopulse-vehicle","autopulse-profile","autopulse-analysis","autopulse-owner-profile","autopulse-reminders", CHAT_KEY, RENDER_KEY].forEach((k) => localStorage.removeItem(k));
+    setVehicle(null); setProfile(null); setAnalysis(null); setOwnerProfile(null);
+    setData(defaultData); setNewMileage(defaultData.mileage); setChat([]); setReminders([]);
+    clearVehicleRender();
+    setVehicleForm({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", color: "", mileage: "" });
+    setTab("home");
+  }
+
+  function changeVehicle() {
+    if (!confirm("Сменить автомобиль? История текущего авто будет очищена в этом прототипе.")) return;
+    ["autopulse-data","autopulse-vehicle","autopulse-profile","autopulse-analysis","autopulse-owner-profile","autopulse-reminders", RENDER_KEY].forEach((k) => localStorage.removeItem(k));
+    setVehicle(null); setProfile(null); setAnalysis(null); setOwnerProfile(null);
+    setData(defaultData); setNewMileage(defaultData.mileage); setReminders([]);
+    clearVehicleRender();
+    setVehicleForm({ vin: "", brand: "", model: "", generation: "", year: "", engine: "", transmission: "", drive: "", color: "", mileage: "" });
+    setTab("home");
+  }
+
+  function clearChatHistory() {
+    setChat([]);
+    localStorage.removeItem(CHAT_KEY);
+  }
+
+  // ── Onboarding (no vehicle yet) ───────────────────────────────────────────
+  if (!vehicle) {
+    return (
+      <div className="app mx-app-shell">
+        <WelcomeScreen
+          vehicleForm={vehicleForm}
+          updateVehicleField={updateVehicleField}
+          parseStsPhoto={parseStsPhoto}
+          detectVehicleByVin={detectVehicleByVin}
+          saveVehicleManually={saveVehicleManually}
+          fillDemoVehicle={fillDemoVehicle}
+          isParsingSts={isParsingSts}
+          isDetecting={isDetecting}
+        />
+      </div>
+    );
+  }
+
+  // ── Main app ──────────────────────────────────────────────────────────────
+  return (
+    <div className="app">
+      <div className="topbar">
+        <span className="topbar-brand">Motrix</span>
+        {isAnalyzing && <span className="topbar-analyzing">Анализирую...</span>}
+      </div>
+
+      {/* Owner profile onboarding */}
+      {profileOnboardingOpen && (
+        <OnboardingProfile
+          onSave={saveOwnerProfile}
+          onSkip={() => { setProfileOnboardingOpen(false); setTab("home"); setTimeout(() => analyzeVehicle(data, profile, vehicle), 300); }}
+        />
+      )}
+
+      {/* Pending docs confirmation */}
+      {pendingLogs.length > 0 && (
+        <div className="overlay">
+          <div className="overlay-scroll">
+            <div className="bottom-sheet">
+              <div className="sheet-handle" />
+              <div className="sheet-title">Распознанные работы</div>
+              {pendingDocMileage && pendingDocMileage > data.mileage && (
+                <div className="info-card" style={{ marginBottom: 12 }}>
+                  <div className="info-card-title">Пробег из документа</div>
+                  <div className="info-card-body">
+                    {pendingDocMileage.toLocaleString("ru-RU")} км — будет применён как текущий пробег.
+                  </div>
+                </div>
+              )}
+              {pendingLogs.map((log, index) => (
+                <div className="pending-item" key={log.tempId}>
+                  <div className="pending-item-header">
+                    <span className="pending-item-num">Работа {index + 1}</span>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      {log.confidence && <span className={`confidence-chip ${log.confidence}`}>{log.confidence}</span>}
+                      <button className="pending-remove-btn" onClick={() => removePendingLog(log.tempId)}>✕</button>
+                    </div>
+                  </div>
+                  {log.sourceText && <div className="source-text-hint">«{log.sourceText}»</div>}
+                  <select value={log.normalizedId} onChange={(e) => { const opt = WORK_OPTIONS.find((i) => i.id === e.target.value); updatePendingLog(log.tempId, "normalizedId", e.target.value); updatePendingLog(log.tempId, "title", opt?.label || log.title); }}>
+                    {WORK_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                  </select>
+                  <input value={log.title} onChange={(e) => updatePendingLog(log.tempId, "title", e.target.value)} placeholder="Название" />
+                  <input type="number" value={log.mileage} onChange={(e) => updatePendingLog(log.tempId, "mileage", e.target.value)} placeholder="Пробег" />
+                  <input type="number" value={log.cost} onChange={(e) => updatePendingLog(log.tempId, "cost", e.target.value)} placeholder="Стоимость, ₽" />
+                  <input type="date" value={log.datePerformed} onChange={(e) => updatePendingLog(log.tempId, "datePerformed", e.target.value)} />
+                  <input value={log.note} onChange={(e) => updatePendingLog(log.tempId, "note", e.target.value)} placeholder="Комментарий" />
+                </div>
+              ))}
+              <div className="sheet-row">
+                <button className="btn btn-blue" onClick={applyPendingLogs}>Добавить в журнал</button>
+                <button className="btn btn-gray" onClick={() => { setPendingLogs([]); setPendingDocMileage(null); }}>Закрыть</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manual add / edit sheet */}
+      {manualOpen && (
+        <div className="overlay" onClick={() => setManualOpen(false)}>
+          <div className="overlay-scroll">
+            <div className="bottom-sheet" onClick={(e) => e.stopPropagation()}>
+              <div className="sheet-handle" />
+              <div className="sheet-title">{editingLogId ? "Редактировать работу" : "Добавить работу"}</div>
+              <select value={workDraft.normalizedId} onChange={(e) => { const opt = WORK_OPTIONS.find((i) => i.id === e.target.value); setWorkDraft((p) => ({ ...p, normalizedId: e.target.value, title: opt?.label || p.title })); }}>
+                {WORK_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+              <input value={workDraft.title} onChange={(e) => setWorkDraft((p) => ({ ...p, title: e.target.value }))} placeholder="Название работы" />
+              <input type="number" value={workDraft.mileage} onChange={(e) => setWorkDraft((p) => ({ ...p, mileage: e.target.value }))} placeholder="Пробег" />
+              <input type="number" value={workDraft.cost} onChange={(e) => setWorkDraft((p) => ({ ...p, cost: e.target.value }))} placeholder="Стоимость, ₽" />
+              <input type="date" value={workDraft.datePerformed} onChange={(e) => setWorkDraft((p) => ({ ...p, datePerformed: e.target.value }))} />
+              <input value={workDraft.note} onChange={(e) => setWorkDraft((p) => ({ ...p, note: e.target.value }))} placeholder="Комментарий" />
+              <div className="sheet-row">
+                <button className="btn btn-blue" onClick={saveWorkDraft}>Применить</button>
+                <button className="btn btn-gray" onClick={() => setManualOpen(false)}>Закрыть</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Screens */}
+      {tab === "home" && (
+        <HomeScreen
+          vehicle={vehicle}
+          mileage={data.mileage}
+          newMileage={newMileage}
+          setNewMileage={setNewMileage}
+          saveMileage={saveMileage}
+          healthScore={orch.healthScore}
+          urgentActions={orch.urgentActions}
+          upcomingItems={orch.upcomingItems}
+          costForecast={orch.costForecast}
+          lastService={orch.lastService}
+          mileagePace={orch.mileagePace}
+          mileagePaceData={orch.mileagePaceData}
+          statusSentence={orch.statusSentence}
+          primaryAction={orch.primaryAction}
+          reminders={reminders}
+          vehicleRender={vehicleRender}
+          isGeneratingRender={isGeneratingRender}
+          isParsingDoc={isParsingDoc}
+          onScan={parseServiceDocument}
+          onManualAdd={() => openManualForm()}
+          onOpenProfile={() => setProfileOnboardingOpen(true)}
+          onReminderDismiss={handleReminderDismiss}
+          onReminderDone={handleReminderDone}
+        />
+      )}
+      {tab === "journal" && (
+        <JournalScreen
+          logs={data.logs}
+          isParsingDoc={isParsingDoc}
+          onScan={parseServiceDocument}
+          onManualAdd={() => openManualForm()}
+          onEdit={openManualForm}
+          onDelete={deleteLog}
+        />
+      )}
+      {tab === "passport" && (
+        <PassportScreen
+          vehicle={vehicle}
+          schedule={orch.schedule}
+          analysis={analysis}
+          serviceRules={orch.serviceRules}
+          predictions={orch.predictions}
+          totalSpent={orch.totalSpent}
+          profile={profile}
+          ownerProfile={ownerProfile}
+          logCount={orch.logCount}
+          healthScore={orch.healthScore}
+          costForecast={orch.costForecast}
+          mileagePace={orch.mileagePace}
+          mileagePaceData={orch.mileagePaceData}
+          insights={orch.insights}
+
+        />
+      )}
+      {tab === "ai" && (
+        <AiScreen
+          chat={chat}
+          question={question}
+          setQuestion={setQuestion}
+          isAsking={isAsking}
+          onAsk={askAi}
+          vehicle={vehicle}
+          ownerProfile={ownerProfile}
+          localBriefing={orch.localBriefing}
+          quickQuestions={orch.quickQuestions}
+          mileage={data.mileage}
+        />
+      )}
+      {tab === "more" && (
+        <MoreScreen
+          serviceRules={orch.serviceRules}
+          schedule={orch.schedule}
+          data={data}
+          totalSpent={orch.totalSpent}
+          profile={profile}
+          analysis={analysis}
+          ownerProfile={ownerProfile}
+          onReset={resetData}
+          vehicle={vehicle}
+          onChangeVehicle={changeVehicle}
+          onRegenerateRender={() => generateVehicleRender(vehicle, { force: true })}
+          isGeneratingRender={isGeneratingRender}
+          onClearChat={clearChatHistory}
+          chatCount={chat.length}
+        />
+      )}
+
+      <BottomNav tab={tab} setTab={setTab} reminderCount={reminders.length} />
+    </div>
+  );
 }
