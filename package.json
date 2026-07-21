@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node server/index.js",
+    "start:yc": "PORT=8080 node server/index.js"
   },
   "dependencies": {
     "formidable": "^3.5.4",

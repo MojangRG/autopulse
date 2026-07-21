@@ -1,0 +1,15 @@
+.git
+.github
+node_modules
+dist
+*.log
+*.patch
+*.bak*
+*_patch.sh
+motrix_*.sh
+backup_12062026
+3767
+.env
+.env.*
+!.env.example
+README.old*
